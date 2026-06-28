@@ -29,16 +29,15 @@ const emptyForm = (): Partial<Song> => ({
   コール:"", 備考:"", 汎用:false, 汎用の対象:[], 良曲:false,
 });
 
-// バイグラムJaccard類似度
 function bigrams(s: string): Set<string> {
   const set = new Set<string>();
   const clean = s.replace(/\s/g,"");
-  for (let i=0; i<clean.length-1; i++) set.add(clean.slice(i,i+2));
+  for (let i=0;i<clean.length-1;i++) set.add(clean.slice(i,i+2));
   return set;
 }
 function similarity(a: string, b: string): number {
-  if (!a && !b) return 1; if (!a||!b) return 0;
-  const sa=bigrams(a), sb=bigrams(b); let inter=0;
+  if (!a&&!b) return 1; if (!a||!b) return 0;
+  const sa=bigrams(a),sb=bigrams(b); let inter=0;
   sa.forEach(g=>{if(sb.has(g))inter++;});
   const union=sa.size+sb.size-inter;
   return union===0?0:inter/union;
@@ -51,7 +50,7 @@ function detectDupes(songs: Song[]): DupePair[] {
       const a=active[i],b=active[j];
       if(a.チーム名!==b.チーム名||!a.チーム名) continue;
       if(similarity(a.選手名,b.選手名)<0.3) continue;
-      const la=a.歌詞+a.歌詞2+a.歌詞3, lb=b.歌詞+b.歌詞2+b.歌詞3;
+      const la=a.歌詞+a.歌詞2+a.歌詞3,lb=b.歌詞+b.歌詞2+b.歌詞3;
       if(similarity(la,lb)<0.4) continue;
       pairs.push({a,b});
     }
@@ -59,14 +58,18 @@ function detectDupes(songs: Song[]): DupePair[] {
   return pairs;
 }
 
+function applyTemplate(template: string, keyword: string): string {
+  return template.replace(/⚪︎⚪︎/g, keyword);
+}
+
 const css = {
   input: {width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border)",
     background:"var(--bg3)",color:"var(--text)",fontSize:14,outline:"none"} as React.CSSProperties,
-  btn: (primary?:boolean, danger?:boolean, warn?:boolean): React.CSSProperties => ({
+  btn: (primary?:boolean,danger?:boolean,warn?:boolean): React.CSSProperties => ({
     padding:"7px 14px",borderRadius:7,
-    border: primary||danger||warn?"none":"1px solid var(--border)",
-    background: danger?"#7f1d1d":warn?"#78350f":primary?"var(--accent)":"transparent",
-    color: danger?"#fca5a5":warn?"#fbbf24":primary?"#fff":"var(--accent-light)",
+    border:primary||danger||warn?"none":"1px solid var(--border)",
+    background:danger?"#7f1d1d":warn?"#78350f":primary?"var(--accent)":"transparent",
+    color:danger?"#fca5a5":warn?"#fbbf24":primary?"#fff":"var(--accent-light)",
     cursor:"pointer",fontSize:13,fontWeight:primary?600:400,
   }),
 };
@@ -80,11 +83,6 @@ function Field({label,children}:{label:string;children:React.ReactNode}) {
   );
 }
 
-// ⚪︎⚪︎ をキーワードで置換してコールを生成
-function applyTemplate(template: string, keyword: string): string {
-  return template.replace(/⚪︎⚪︎/g, keyword);
-}
-
 export default function Home() {
   const [allSongs, setAllSongs] = useState<Song[]>([]);
   const [teams, setTeams] = useState<string[]>([]);
@@ -93,7 +91,7 @@ export default function Home() {
   const [filterTeam, setFilterTeam] = useState("");
   const [filterQ, setFilterQ] = useState("");
   const [searchType, setSearchType] = useState<"name"|"lyrics">("name");
-  const [tab, setTab] = useState<"list"|"add"|"clubs"|"dupes"|"teams">("list");
+  const [tab, setTab] = useState<"list"|"add"|"clubs"|"dupes"|"settings">("list");
   const [form, setForm] = useState<Partial<Song>>(emptyForm());
   const [editId, setEditId] = useState<string|null>(null);
   const [expanded, setExpanded] = useState<string|null>(null);
@@ -103,28 +101,27 @@ export default function Home() {
   const [addingTeam, setAddingTeam] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string|null>(null);
   const [dismissing, setDismissing] = useState<string|null>(null);
-  // コール入力用
   const [callKeyword, setCallKeyword] = useState("");
   const [showTemplateMenu, setShowTemplateMenu] = useState(false);
-  // テンプレ追加
   const [newTplName, setNewTplName] = useState("");
   const [newTplContent, setNewTplContent] = useState("");
   const [addingTpl, setAddingTpl] = useState(false);
-  // 球団タブ
   const [clubFilter, setClubFilter] = useState("");
 
-  const showToast = (msg:string, ok=true) => {
+  const showToast = (msg:string,ok=true) => {
     setToast({msg,ok}); setTimeout(()=>setToast(null),3000);
   };
 
-  const fetchTeams = async () => {
+  const fetchTeams = useCallback(async () => {
     const r=await fetch("/api/teams"); const d=await r.json();
     if(d.teams) setTeams(d.teams);
-  };
-  const fetchTemplates = async () => {
+  },[]);
+
+  const fetchTemplates = useCallback(async () => {
     const r=await fetch("/api/templates"); const d=await r.json();
     if(d.templates) setTemplates(d.templates);
-  };
+  },[]);
+
   const fetchSongs = useCallback(async () => {
     setLoading(true);
     try {
@@ -135,19 +132,18 @@ export default function Home() {
     setLoading(false);
   },[]);
 
-  useEffect(()=>{fetchTeams();fetchSongs();fetchTemplates();},[fetchSongs]);
+  useEffect(()=>{fetchTeams();fetchSongs();fetchTemplates();},[fetchTeams,fetchSongs,fetchTemplates]);
 
-  // フィルタ（クライアント側）
+  // ① 歌詞検索：前奏・歌詞・歌詞2・歌詞3をすべて対象に
   const filtered = allSongs.filter(s => {
     if(filterTeam && s.チーム名!==filterTeam) return false;
     if(filterQ){
       if(searchType==="name") return s.選手名.includes(filterQ);
-      return s.歌詞.includes(filterQ)||s.歌詞2.includes(filterQ)||s.歌詞3.includes(filterQ)||s.コール.includes(filterQ);
+      return s.前奏.includes(filterQ)||s.歌詞.includes(filterQ)||s.歌詞2.includes(filterQ)||s.歌詞3.includes(filterQ)||s.コール.includes(filterQ);
     }
     return true;
   });
 
-  // 球団ごとの集計
   const clubStats = (() => {
     const map: Record<string,number>={};
     allSongs.forEach(s=>{
@@ -169,9 +165,11 @@ export default function Home() {
       const d=await r.json();
       if(d.error){showToast(d.error,false);setSubmitting(false);return;}
       showToast(isEdit?"更新しました":"登録しました");
-      setForm(emptyForm());setEditId(null);setTab("list");
+      setForm(emptyForm());setEditId(null);setCallKeyword("");setTab("list");
       await fetchSongs();
-    }catch{showToast("保存に失敗しました",false);}
+      // ② チーム追加時にteamsも更新
+      await fetchTeams();
+    } catch{showToast("保存に失敗しました",false);}
     setSubmitting(false);
   };
 
@@ -183,7 +181,7 @@ export default function Home() {
       showToast("削除しました");
       setAllSongs(prev=>prev.filter(s=>s.id!==id));
       setDeleteConfirm(null);
-    }catch{showToast("削除に失敗しました",false);}
+    } catch{showToast("削除に失敗しました",false);}
   };
 
   const handleDismissDupe = async (pair:DupePair) => {
@@ -195,7 +193,7 @@ export default function Home() {
       ]);
       setAllSongs(prev=>prev.map(s=>s.id===pair.a.id||s.id===pair.b.id?{...s,重複除外:true}:s));
       showToast("この組み合わせを今後無視します");
-    }catch{showToast("更新に失敗しました",false);}
+    } catch{showToast("更新に失敗しました",false);}
     setDismissing(null);
   };
 
@@ -205,10 +203,12 @@ export default function Home() {
     try {
       const r=await fetch("/api/templates",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({名前:newTplName,内容:newTplContent})});
       const d=await r.json();
-      if(d.error){showToast(d.error,false);return;}
-      setTemplates(d.templates);setNewTplName("");setNewTplContent("");
+      if(d.error){showToast(d.error,false);setAddingTpl(false);return;}
+      // ③ 追加後すぐ反映
+      setTemplates(d.templates);
+      setNewTplName("");setNewTplContent("");
       showToast("テンプレートを追加しました");
-    }catch{showToast("追加に失敗しました",false);}
+    } catch{showToast("追加に失敗しました",false);}
     setAddingTpl(false);
   };
 
@@ -219,19 +219,18 @@ export default function Home() {
       if(d.error){showToast(d.error,false);return;}
       setTemplates(d.templates);
       showToast("削除しました");
-    }catch{showToast("削除に失敗しました",false);}
+    } catch{showToast("削除に失敗しました",false);}
   };
 
   const applyTpl = (tpl:Template) => {
     if(!callKeyword.trim()){showToast("先にキーワード（⚪︎⚪︎）を入力してください",false);return;}
-    const result = applyTemplate(tpl.内容, callKeyword.trim());
-    setForm(prev=>({...prev, コール:result}));
+    setForm(prev=>({...prev,コール:applyTemplate(tpl.内容,callKeyword.trim())}));
     setShowTemplateMenu(false);
     showToast(`「${tpl.名前}」を適用しました`);
   };
 
   const startEdit = (song:Song) => {
-    setForm({...song}); setEditId(song.id); setCallKeyword(""); setTab("add");
+    setForm({...song});setEditId(song.id);setCallKeyword("");setTab("add");
   };
 
   const handleAddTeam = async () => {
@@ -241,23 +240,22 @@ export default function Home() {
       const d=await r.json();
       if(d.error){showToast(d.error,false);return;}
       setTeams(d.teams);setNewTeamName("");showToast("チームを追加しました");
-    }catch{showToast("追加に失敗しました",false);}
+    } catch{showToast("追加に失敗しました",false);}
     setAddingTeam(false);
   };
 
   const teamColor=(t:string)=>TEAM_COLORS[t]||"#334a66";
 
-  const TABS = [
-    {key:"list" as const, label:"一覧"},
-    {key:"add" as const, label: editId?"✏️ 編集":"＋ 追加"},
-    {key:"clubs" as const, label:"🏟️ 球団"},
-    {key:"dupes" as const, label:`⚠️${dupes.length>0?` (${dupes.length})`:""}`, warn:dupes.length>0},
-    {key:"teams" as const, label:"設定"},
+  const TABS=[
+    {key:"list" as const,label:"一覧"},
+    {key:"add" as const,label:editId?"✏️ 編集":"＋ 追加"},
+    {key:"clubs" as const,label:"🏟️ 球団"},
+    {key:"dupes" as const,label:`⚠️${dupes.length>0?` (${dupes.length})`:""}`,warn:dupes.length>0},
+    {key:"settings" as const,label:"設定"},
   ];
 
   return (
     <div style={{minHeight:"100vh"}}>
-      {/* Header */}
       <div style={{background:"linear-gradient(135deg,#0d1b2a,#1a0a2e)",borderBottom:"1px solid var(--border)",padding:"11px 14px",display:"flex",alignItems:"center",gap:10}}>
         <span style={{fontSize:22}}>⚾</span>
         <div style={{flex:1}}>
@@ -266,14 +264,13 @@ export default function Home() {
         <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
           {TABS.map(({key,label,warn})=>(
             <button key={key} onClick={()=>{if(key!=="add"){setEditId(null);setForm(emptyForm());}setTab(key);}}
-              style={{...css.btn(tab===key,false,tab!==key&&warn),padding:"5px 10px",fontSize:12}}>
+              style={{...css.btn(tab===key,false,tab!==key&&!!warn),padding:"5px 10px",fontSize:12}}>
               {label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Toast */}
       {toast&&(
         <div style={{position:"fixed",top:12,right:12,zIndex:999,padding:"8px 14px",borderRadius:8,fontSize:13,
           background:toast.ok?"#1a4a2e":"#2a0f0f",border:`1px solid ${toast.ok?"#2d6b44":"#6b2d2d"}`,
@@ -298,18 +295,20 @@ export default function Home() {
                   </button>
                 ))}
               </div>
-              <input placeholder={searchType==="name"?"選手名で検索…":"歌詞で検索…"} value={filterQ}
-                onChange={e=>setFilterQ(e.target.value)}
+              <input placeholder={searchType==="name"?"選手名で検索…":"前奏・歌詞・コールで検索…"}
+                value={filterQ} onChange={e=>setFilterQ(e.target.value)}
                 style={{...css.input,flex:1,minWidth:120}} />
+              {/* ④ 全球団に戻るボタン */}
               <select value={filterTeam} onChange={e=>setFilterTeam(e.target.value)}
                 style={{...css.input,width:"auto",cursor:"pointer"}}>
-                <option value="">全チーム</option>
+                <option value="">全球団</option>
                 {teams.map(t=><option key={t} value={t}>{t}</option>)}
               </select>
               <button onClick={fetchSongs} style={css.btn()} disabled={loading} title="再取得">🔄</button>
             </div>
             <div style={{fontSize:12,color:"var(--text-muted)",marginBottom:7}}>
               {loading?"読込中…":`${filtered.length} / ${allSongs.length} 件`}
+              {filterTeam&&<span style={{marginLeft:8,color:"var(--accent-light)"}}> — {filterTeam}</span>}
             </div>
             {filtered.length===0&&!loading?(
               <div style={{textAlign:"center",padding:40,color:"var(--text-muted)"}}>
@@ -397,11 +396,8 @@ export default function Home() {
                   <textarea value={form[key]??""} onChange={e=>setForm({...form,[key]:e.target.value})} rows={3} style={{...css.input,resize:"vertical"}} />
                 </Field>
               ))}
-
-              {/* コール入力 — テンプレ機能付き */}
               <Field label="コール">
                 <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                  {/* キーワード入力 */}
                   <div style={{display:"flex",gap:6,alignItems:"center"}}>
                     <span style={{fontSize:12,color:"var(--text-muted)",whiteSpace:"nowrap"}}>⚪︎⚪︎ =</span>
                     <input value={callKeyword} onChange={e=>setCallKeyword(e.target.value)}
@@ -417,11 +413,13 @@ export default function Home() {
                           {templates.length===0?(
                             <div style={{padding:"12px 14px",fontSize:13,color:"var(--text-muted)"}}>テンプレートがありません</div>
                           ):templates.map(tpl=>(
-                            <div key={tpl.id} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 12px",borderBottom:"1px solid var(--border)",cursor:"pointer"}}
-                              onClick={()=>applyTpl(tpl)}>
-                              <div style={{flex:1}}>
-                                <div style={{fontSize:13,fontWeight:600,color:"var(--text)"}}>{tpl.名前}</div>
-                                <div style={{fontSize:11,color:"var(--text-muted)",marginTop:2,fontFamily:"monospace"}}>{tpl.内容.replace(/⚪︎⚪︎/g, callKeyword||"⚪︎⚪︎")}</div>
+                            <div key={tpl.id} style={{padding:"8px 12px",borderBottom:"1px solid var(--border)",cursor:"pointer"}}
+                              onClick={()=>applyTpl(tpl)}
+                              onMouseEnter={e=>(e.currentTarget.style.background="#111d2e")}
+                              onMouseLeave={e=>(e.currentTarget.style.background="")}>
+                              <div style={{fontSize:13,fontWeight:600,color:"var(--text)"}}>{tpl.名前}</div>
+                              <div style={{fontSize:11,color:"var(--text-muted)",marginTop:2,fontFamily:"monospace"}}>
+                                {callKeyword ? applyTemplate(tpl.内容,callKeyword) : tpl.内容}
                               </div>
                             </div>
                           ))}
@@ -434,7 +432,6 @@ export default function Home() {
                     style={{...css.input,resize:"vertical"}} />
                 </div>
               </Field>
-
               <Field label="備考">
                 <textarea value={form.備考??""} onChange={e=>setForm({...form,備考:e.target.value})} rows={2} style={{...css.input,resize:"vertical"}} />
               </Field>
@@ -469,7 +466,8 @@ export default function Home() {
                 <button onClick={handleSubmit} disabled={submitting} style={{...css.btn(true),flex:1,padding:"9px 0",fontSize:14}}>
                   {submitting?"保存中…":(editId?"更新する":"登録する")}
                 </button>
-                <button onClick={()=>{setForm(emptyForm());setEditId(null);setCallKeyword("");setShowTemplateMenu(false);setTab("list");}} style={{...css.btn(),padding:"9px 14px"}}>キャンセル</button>
+                <button onClick={()=>{setForm(emptyForm());setEditId(null);setCallKeyword("");setShowTemplateMenu(false);setTab("list");}}
+                  style={{...css.btn(),padding:"9px 14px"}}>キャンセル</button>
               </div>
             </div>
           </div>
@@ -484,27 +482,40 @@ export default function Home() {
               <input placeholder="球団名で絞込…" value={clubFilter} onChange={e=>setClubFilter(e.target.value)}
                 style={{...css.input,width:180,marginLeft:"auto"}} />
             </div>
+            {/* ④ 全球団ボタン */}
+            {filterTeam&&(
+              <div style={{marginBottom:10}}>
+                <button onClick={()=>{setFilterTeam("");setTab("list");}}
+                  style={{...css.btn(true),padding:"5px 14px",fontSize:12}}>
+                  ← 全球団に戻る
+                </button>
+                <span style={{marginLeft:10,fontSize:13,color:"var(--accent-light)"}}>{filterTeam} で絞り込み中</span>
+              </div>
+            )}
             <div style={{display:"flex",flexDirection:"column",gap:5}}>
               {clubStats
                 .filter(([t])=>!clubFilter||t.includes(clubFilter))
                 .map(([team,count])=>{
                   const pct=Math.round(count/allSongs.length*100);
                   const color=teamColor(team);
+                  const isActive=filterTeam===team;
                   return(
                     <div key={team}
-                      onClick={()=>{setFilterTeam(team);setTab("list");}}
-                      style={{background:"var(--bg2)",border:"1px solid var(--border)",borderLeft:`4px solid ${color}`,borderRadius:8,padding:"10px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:12,transition:"background 0.15s"}}
+                      onClick={()=>{setFilterTeam(isActive?"":team);if(!isActive)setTab("list");}}
+                      style={{background:isActive?"#111d2e":"var(--bg2)",border:`1px solid ${isActive?"var(--accent)":"var(--border)"}`,
+                        borderLeft:`4px solid ${color}`,borderRadius:8,padding:"10px 14px",cursor:"pointer",
+                        display:"flex",alignItems:"center",gap:12}}
                       onMouseEnter={e=>(e.currentTarget.style.background="#111d2e")}
-                      onMouseLeave={e=>(e.currentTarget.style.background="var(--bg2)")}>
+                      onMouseLeave={e=>(e.currentTarget.style.background=isActive?"#111d2e":"var(--bg2)")}>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontSize:14,fontWeight:600,marginBottom:4}}>{team}</div>
                         <div style={{height:5,background:"var(--bg3)",borderRadius:3,overflow:"hidden"}}>
-                          <div style={{height:"100%",width:`${pct}%`,background:color,borderRadius:3,transition:"width 0.3s"}} />
+                          <div style={{height:"100%",width:`${pct}%`,background:color,borderRadius:3}} />
                         </div>
                       </div>
                       <div style={{textAlign:"right",minWidth:60}}>
                         <span style={{fontSize:22,fontWeight:700,color}}>{count}</span>
-                        <span style={{fontSize:12,color:"var(--text-muted)",marginLeft:2}}>人</span>
+                        <span style={{fontSize:12,color:"var(--text-muted)",marginLeft:2}}>件</span>
                         <div style={{fontSize:11,color:"var(--text-muted)"}}>{pct}%</div>
                       </div>
                     </div>
@@ -554,10 +565,9 @@ export default function Home() {
           </div>
         )}
 
-        {/* ===== SETTINGS (teams + templates) ===== */}
-        {tab==="teams"&&(
+        {/* ===== SETTINGS ===== */}
+        {tab==="settings"&&(
           <div style={{display:"flex",flexDirection:"column",gap:16}}>
-            {/* チーム追加 */}
             <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:10,padding:16}}>
               <div style={{fontSize:14,fontWeight:700,marginBottom:12,color:"var(--accent-light)"}}>🏟️ チーム管理</div>
               <div style={{display:"flex",gap:7,marginBottom:12}}>
@@ -573,19 +583,14 @@ export default function Home() {
                 ))}
               </div>
             </div>
-
-            {/* テンプレート管理 */}
             <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:10,padding:16}}>
               <div style={{fontSize:14,fontWeight:700,marginBottom:4,color:"var(--accent-light)"}}>📝 コールテンプレート</div>
               <div style={{fontSize:12,color:"var(--text-muted)",marginBottom:12}}>
                 <code style={{background:"var(--bg3)",padding:"1px 5px",borderRadius:3}}>⚪︎⚪︎</code> がキーワードで置換されます
               </div>
-
-              {/* 新規追加 */}
               <div style={{display:"flex",flexDirection:"column",gap:7,marginBottom:14,padding:12,background:"var(--bg3)",borderRadius:8}}>
                 <div style={{fontSize:12,color:"var(--text-muted)"}}>新しいテンプレートを追加</div>
-                <input value={newTplName} onChange={e=>setNewTplName(e.target.value)} placeholder="テンプレート名（例：かっ飛ばせ）"
-                  style={css.input} />
+                <input value={newTplName} onChange={e=>setNewTplName(e.target.value)} placeholder="テンプレート名（例：かっ飛ばせ）" style={css.input} />
                 <textarea value={newTplContent} onChange={e=>setNewTplContent(e.target.value)}
                   placeholder={"内容（例：⚪︎⚪︎！⚪︎⚪︎！かっ飛ばせ！⚪︎⚪︎）"}
                   rows={2} style={{...css.input,resize:"vertical",fontFamily:"monospace"}} />
@@ -593,8 +598,6 @@ export default function Home() {
                   {addingTpl?"追加中…":"追加"}
                 </button>
               </div>
-
-              {/* テンプレ一覧 */}
               {templates.length===0?(
                 <div style={{color:"var(--text-muted)",fontSize:13,textAlign:"center",padding:"12px 0"}}>テンプレートがありません</div>
               ):(
