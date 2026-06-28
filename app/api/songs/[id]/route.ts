@@ -8,7 +8,6 @@ function toPageId(id: string): string {
   return id;
 }
 
-// PATCH /api/songs/[id]
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
@@ -30,6 +29,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (body.汎用の対象 !== undefined) properties["汎用の対象"] = {
       multi_select: (body.汎用の対象 as string[]).map(n => ({ name: n }))
     };
+    if (body.流用 !== undefined) properties["流用"] = {
+      relation: (body.流用 as string[]).map(id => ({ id }))
+    };
 
     await notion.pages.update({ page_id: pageId, properties });
     return NextResponse.json({ ok: true });
@@ -38,7 +40,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 }
 
-// DELETE /api/songs/[id]
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
