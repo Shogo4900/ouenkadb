@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 const HANYOU_TARGETS = ["捕手","日本人野手","外国人野手","投手","若手","左打者","右打者","外国人投手","野手"];
 
@@ -18,7 +18,7 @@ type Song = {
   id: string; 選手名: string; チーム名: string; 前奏: string;
   歌詞: string; 歌詞2: string; 歌詞3: string; コール: string;
   備考: string; 汎用: boolean; 汎用の対象: string[]; 良曲: boolean;
-  重複除外: boolean; notionId: number | null;
+  重複除外: boolean; 流用: string[]; notionId: number | null;
 };
 
 type Template = { id: string; 名前: string; 内容: string };
@@ -26,7 +26,7 @@ type DupePair = { a: Song; b: Song };
 
 const emptyForm = (): Partial<Song> => ({
   選手名:"", チーム名:"", 前奏:"", 歌詞:"", 歌詞2:"", 歌詞3:"",
-  コール:"", 備考:"", 汎用:false, 汎用の対象:[], 良曲:false,
+  コール:"", 備考:"", 汎用:false, 汎用の対象:[], 良曲:false, 流用:[],
 });
 
 function bigrams(s: string): Set<string> {
@@ -90,6 +90,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [filterTeam, setFilterTeam] = useState("");
   const [filterQ, setFilterQ] = useState("");
+  const [filterRyoku, setFilterRyoku] = useState(false); // 良曲絞り込み
   const [searchType, setSearchType] = useState<"name"|"lyrics">("name");
   const [tab, setTab] = useState<"list"|"add"|"clubs"|"dupes"|"settings">("list");
   const [form, setForm] = useState<Partial<Song>>(emptyForm());
@@ -107,6 +108,12 @@ export default function Home() {
   const [newTplContent, setNewTplContent] = useState("");
   const [addingTpl, setAddingTpl] = useState(false);
   const [clubFilter, setClubFilter] = useState("");
+  // 流用検索
+  const [ryuyoQuery, setRyuyoQuery] = useState("");
+
+  // スクロール位置保持
+  const scrollRef = useRef<number>(0);
+  const listRef = useRef<HTMLDivElement>(null);
 
   const showToast = (msg:string,ok=true) => {
     setToast({msg,ok}); setTimeout(()=>setToast(null),3000);
@@ -134,9 +141,12 @@ export default function Home() {
 
   useEffect(()=>{fetchTeams();fetchSongs();fetchTemplates();},[fetchTeams,fetchSongs,fetchTemplates]);
 
-  // ① 歌詞検索：前奏・歌詞・歌詞2・歌詞3をすべて対象に
+  // id→選手名の逆引きmap
+  const songMap = Object.fromEntries(allSongs.map(s=>[s.id,s]));
+
   const filtered = allSongs.filter(s => {
     if(filterTeam && s.チーム名!==filterTeam) return false;
+    if(filterRyoku && !s.良曲) return false;
     if(filterQ){
       if(searchType==="name") return s.選手名.includes(filterQ);
       return s.前奏.includes(filterQ)||s.歌詞.includes(filterQ)||s.歌詞2.includes(filterQ)||s.歌詞3.includes(filterQ)||s.コール.includes(filterQ);
@@ -155,6 +165,11 @@ export default function Home() {
 
   const dupes = detectDupes(allSongs);
 
+  // 流用検索候補
+  const ryuyoCandidates = ryuyoQuery.trim()
+    ? allSongs.filter(s=>s.id!==editId && (s.選手名.includes(ryuyoQuery)||s.チーム名.includes(ryuyoQuery)))
+    : [];
+
   const handleSubmit = async () => {
     if(!form.選手名?.trim()){showToast("選手名は必須です",false);return;}
     setSubmitting(true);
@@ -165,10 +180,17 @@ export default function Home() {
       const d=await r.json();
       if(d.error){showToast(d.error,false);setSubmitting(false);return;}
       showToast(isEdit?"更新しました":"登録しました");
+      const savedEditId=editId;
       setForm(emptyForm());setEditId(null);setCallKeyword("");setTab("list");
       await fetchSongs();
-      // ② チーム追加時にteamsも更新
       await fetchTeams();
+      // 編集したカードの位置にスクロール
+      if(savedEditId){
+        setTimeout(()=>{
+          const el=document.getElementById(`song-${savedEditId}`);
+          el?.scrollIntoView({block:"center",behavior:"smooth"});
+        },100);
+      }
     } catch{showToast("保存に失敗しました",false);}
     setSubmitting(false);
   };
@@ -204,7 +226,6 @@ export default function Home() {
       const r=await fetch("/api/templates",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({名前:newTplName,内容:newTplContent})});
       const d=await r.json();
       if(d.error){showToast(d.error,false);setAddingTpl(false);return;}
-      // ③ 追加後すぐ反映
       setTemplates(d.templates);
       setNewTplName("");setNewTplContent("");
       showToast("テンプレートを追加しました");
@@ -230,7 +251,7 @@ export default function Home() {
   };
 
   const startEdit = (song:Song) => {
-    setForm({...song});setEditId(song.id);setCallKeyword("");setTab("add");
+    setForm({...song});setEditId(song.id);setCallKeyword("");setRyuyoQuery("");setTab("add");
   };
 
   const handleAddTeam = async () => {
@@ -284,7 +305,7 @@ export default function Home() {
         {/* ===== LIST ===== */}
         {tab==="list"&&(
           <>
-            <div style={{display:"flex",gap:6,marginBottom:9,flexWrap:"wrap"}}>
+            <div style={{display:"flex",gap:6,marginBottom:6,flexWrap:"wrap"}}>
               <div style={{display:"flex",borderRadius:7,overflow:"hidden",border:"1px solid var(--border)"}}>
                 {(["name","lyrics"] as const).map(type=>(
                   <button key={type} onClick={()=>setSearchType(type)}
@@ -298,7 +319,6 @@ export default function Home() {
               <input placeholder={searchType==="name"?"選手名で検索…":"前奏・歌詞・コールで検索…"}
                 value={filterQ} onChange={e=>setFilterQ(e.target.value)}
                 style={{...css.input,flex:1,minWidth:120}} />
-              {/* ④ 全球団に戻るボタン */}
               <select value={filterTeam} onChange={e=>setFilterTeam(e.target.value)}
                 style={{...css.input,width:"auto",cursor:"pointer"}}>
                 <option value="">全球団</option>
@@ -306,27 +326,38 @@ export default function Home() {
               </select>
               <button onClick={fetchSongs} style={css.btn()} disabled={loading} title="再取得">🔄</button>
             </div>
-            <div style={{fontSize:12,color:"var(--text-muted)",marginBottom:7}}>
-              {loading?"読込中…":`${filtered.length} / ${allSongs.length} 件`}
-              {filterTeam&&<span style={{marginLeft:8,color:"var(--accent-light)"}}> — {filterTeam}</span>}
+            {/* 良曲フィルター */}
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+              <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",fontSize:13}}>
+                <input type="checkbox" checked={filterRyoku} onChange={e=>setFilterRyoku(e.target.checked)} />
+                <span style={{color: filterRyoku?"var(--accent-light)":"var(--text-muted)"}}>⭐ 良曲のみ</span>
+              </label>
+              <span style={{fontSize:12,color:"var(--text-muted)"}}>
+                {loading?"読込中…":`${filtered.length} / ${allSongs.length} 件`}
+                {filterTeam&&<span style={{marginLeft:6,color:"var(--accent-light)"}}> — {filterTeam}</span>}
+              </span>
             </div>
+
             {filtered.length===0&&!loading?(
               <div style={{textAlign:"center",padding:40,color:"var(--text-muted)"}}>
                 {allSongs.length===0?"データがありません":"検索結果がありません"}
               </div>
             ):(
-              <div style={{display:"flex",flexDirection:"column",gap:5}}>
+              <div ref={listRef} style={{display:"flex",flexDirection:"column",gap:5}}>
                 {filtered.map(song=>{
                   const isExp=expanded===song.id;
                   const color=teamColor(song.チーム名);
+                  // 流用元の選手名を解決
+                  const ryuyoNames=(song.流用??[]).map(id=>songMap[id]?.選手名).filter(Boolean);
                   return(
-                    <div key={song.id} style={{background:"var(--bg2)",border:"1px solid var(--border)",borderLeft:`3px solid ${color}`,borderRadius:8,overflow:"hidden"}}>
+                    <div key={song.id} id={`song-${song.id}`} style={{background:"var(--bg2)",border:"1px solid var(--border)",borderLeft:`3px solid ${color}`,borderRadius:8,overflow:"hidden"}}>
                       <div style={{padding:"9px 11px",display:"flex",alignItems:"center",gap:7}}>
                         <div style={{flex:1,cursor:"pointer",minWidth:0}} onClick={()=>setExpanded(isExp?null:song.id)}>
                           <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
                             <span style={{fontWeight:700,fontSize:14}}>{song.選手名||"（名前なし）"}</span>
                             {song.良曲&&<span style={{fontSize:10,background:"#1a3a5e",color:"var(--accent-light)",padding:"1px 5px",borderRadius:4}}>⭐良曲</span>}
                             {song.汎用&&<span style={{fontSize:10,background:"#1a3a2e",color:"var(--green)",padding:"1px 5px",borderRadius:4}}>汎用</span>}
+                            {ryuyoNames.length>0&&<span style={{fontSize:10,background:"#1a2a3a",color:"#a0b4c8",padding:"1px 5px",borderRadius:4}}>流用: {ryuyoNames.join(", ")}</span>}
                             {song.重複除外&&<span style={{fontSize:10,background:"#222",color:"#666",padding:"1px 5px",borderRadius:4}}>除外済</span>}
                           </div>
                           {song.チーム名&&<div style={{fontSize:11,color:"var(--text-muted)",marginTop:1}}>{song.チーム名}</div>}
@@ -419,7 +450,7 @@ export default function Home() {
                               onMouseLeave={e=>(e.currentTarget.style.background="")}>
                               <div style={{fontSize:13,fontWeight:600,color:"var(--text)"}}>{tpl.名前}</div>
                               <div style={{fontSize:11,color:"var(--text-muted)",marginTop:2,fontFamily:"monospace"}}>
-                                {callKeyword ? applyTemplate(tpl.内容,callKeyword) : tpl.内容}
+                                {callKeyword?applyTemplate(tpl.内容,callKeyword):tpl.内容}
                               </div>
                             </div>
                           ))}
@@ -435,6 +466,58 @@ export default function Home() {
               <Field label="備考">
                 <textarea value={form.備考??""} onChange={e=>setForm({...form,備考:e.target.value})} rows={2} style={{...css.input,resize:"vertical"}} />
               </Field>
+
+              {/* 流用 */}
+              <Field label="流用元">
+                <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                  {/* 選択済み */}
+                  {(form.流用??[]).length>0&&(
+                    <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                      {(form.流用??[]).map(id=>{
+                        const s=songMap[id];
+                        return s?(
+                          <span key={id} style={{display:"flex",alignItems:"center",gap:5,fontSize:12,background:"#1a2a3a",border:"1px solid var(--border)",color:"#a0b4c8",padding:"3px 8px",borderRadius:5}}>
+                            {s.選手名}（{s.チーム名}）
+                            <span style={{cursor:"pointer",color:"var(--red)",fontWeight:700}}
+                              onClick={()=>setForm(prev=>({...prev,流用:(prev.流用??[]).filter(x=>x!==id)}))}>×</span>
+                          </span>
+                        ):null;
+                      })}
+                    </div>
+                  )}
+                  {/* 検索 */}
+                  <div style={{position:"relative"}}>
+                    <input value={ryuyoQuery} onChange={e=>setRyuyoQuery(e.target.value)}
+                      placeholder="選手名・球団名で検索して追加…"
+                      style={{...css.input,fontSize:13}} />
+                    {ryuyoCandidates.length>0&&(
+                      <div style={{position:"absolute",top:"calc(100% + 2px)",left:0,right:0,background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:7,zIndex:100,maxHeight:200,overflowY:"auto",boxShadow:"0 4px 16px #0008"}}>
+                        {ryuyoCandidates.slice(0,20).map(s=>{
+                          const already=(form.流用??[]).includes(s.id);
+                          return(
+                            <div key={s.id}
+                              onClick={()=>{
+                                if(!already) setForm(prev=>({...prev,流用:[...(prev.流用??[]),s.id]}));
+                                setRyuyoQuery("");
+                              }}
+                              style={{padding:"7px 11px",cursor:already?"default":"pointer",
+                                background:already?"#0d1b2a":"",
+                                borderBottom:"1px solid var(--border)",fontSize:13,
+                                color:already?"var(--text-muted)":"var(--text)"}}
+                              onMouseEnter={e=>{if(!already)e.currentTarget.style.background="#111d2e";}}
+                              onMouseLeave={e=>{e.currentTarget.style.background=already?"#0d1b2a":""}}>
+                              <span style={{fontWeight:600}}>{s.選手名}</span>
+                              <span style={{fontSize:11,color:"var(--text-muted)",marginLeft:6}}>{s.チーム名}</span>
+                              {already&&<span style={{fontSize:11,color:"var(--text-muted)",marginLeft:6}}>（追加済）</span>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Field>
+
               <div style={{display:"flex",gap:20}}>
                 {(["汎用","良曲"] as const).map(key=>(
                   <label key={key} style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:14}}>
@@ -466,7 +549,7 @@ export default function Home() {
                 <button onClick={handleSubmit} disabled={submitting} style={{...css.btn(true),flex:1,padding:"9px 0",fontSize:14}}>
                   {submitting?"保存中…":(editId?"更新する":"登録する")}
                 </button>
-                <button onClick={()=>{setForm(emptyForm());setEditId(null);setCallKeyword("");setShowTemplateMenu(false);setTab("list");}}
+                <button onClick={()=>{setForm(emptyForm());setEditId(null);setCallKeyword("");setShowTemplateMenu(false);setRyuyoQuery("");setTab("list");}}
                   style={{...css.btn(),padding:"9px 14px"}}>キャンセル</button>
               </div>
             </div>
@@ -482,7 +565,6 @@ export default function Home() {
               <input placeholder="球団名で絞込…" value={clubFilter} onChange={e=>setClubFilter(e.target.value)}
                 style={{...css.input,width:180,marginLeft:"auto"}} />
             </div>
-            {/* ④ 全球団ボタン */}
             {filterTeam&&(
               <div style={{marginBottom:10}}>
                 <button onClick={()=>{setFilterTeam("");setTab("list");}}
@@ -501,7 +583,7 @@ export default function Home() {
                   const isActive=filterTeam===team;
                   return(
                     <div key={team}
-                      onClick={()=>{setFilterTeam(isActive?"":team);if(!isActive)setTab("list");}}
+                      onClick={()=>{setFilterTeam(isActive?"":team);setTab("list");}}
                       style={{background:isActive?"#111d2e":"var(--bg2)",border:`1px solid ${isActive?"var(--accent)":"var(--border)"}`,
                         borderLeft:`4px solid ${color}`,borderRadius:8,padding:"10px 14px",cursor:"pointer",
                         display:"flex",alignItems:"center",gap:12}}
