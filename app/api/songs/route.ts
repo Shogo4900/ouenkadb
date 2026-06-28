@@ -26,6 +26,7 @@ function pageToSong(page: any) {
     汎用の対象: p["汎用の対象"]?.multi_select?.map((o: any) => o.name) ?? [],
     良曲: p["良曲"]?.checkbox ?? false,
     重複除外: p["重複除外"]?.checkbox ?? false,
+    流用: p["流用"]?.relation?.map((r: any) => r.id) ?? [],
     notionId: p["ID"]?.unique_id?.number ?? null,
   };
 }
@@ -36,7 +37,7 @@ async function fetchAllSongs() {
   while (true) {
     const res: any = await (notion as any).dataSources.query({
       data_source_id: DATA_SOURCE_ID,
-      query: `SELECT * FROM "collection://${DATA_SOURCE_ID}" ORDER BY "userDefined:ID" DESC LIMIT 100`,
+      query: `SELECT * FROM "collection://${DATA_SOURCE_ID}" LIMIT 100`,
       ...(cursor ? { start_cursor: cursor } : {}),
     });
     all.push(...(res.results ?? []));
@@ -70,6 +71,7 @@ export async function POST(req: NextRequest) {
       良曲: { checkbox: body.良曲 ?? false },
       重複除外: { checkbox: false },
       汎用の対象: { multi_select: (body.汎用の対象 ?? []).map((n: string) => ({ name: n })) },
+      流用: { relation: (body.流用 ?? []).map((id: string) => ({ id })) },
     };
     if (body.チーム名) properties["チーム名"] = { select: { name: body.チーム名 } };
 
