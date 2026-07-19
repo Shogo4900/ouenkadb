@@ -119,8 +119,6 @@ function Field({label,children}:{label:string;children:React.ReactNode}) {
 
 export default function Home() {
   const [allSongs, setAllSongs] = useState<Song[]>([]);
-  const [detectingTpl, setDetectingTpl] = useState(false);
-  const [detectResult, setDetectResult] = useState<{updated:number,undetected:number,total:number}|null>(null);
   const [teams, setTeams] = useState<string[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(false);
@@ -151,6 +149,8 @@ export default function Home() {
   const [ryuyoQuery, setRyuyoQuery] = useState("");
   // テンプレート不明警告（編集時）
   const [tplWarning, setTplWarning] = useState(false);
+  const [detectingTpl, setDetectingTpl] = useState(false);
+  const [detectResult, setDetectResult] = useState<{updated:number,undetected:number,total:number}|null>(null);
 
   const showToast = (msg:string,ok=true) => {
     setToast({msg,ok}); setTimeout(()=>setToast(null),3500);
@@ -338,6 +338,23 @@ export default function Home() {
     setTab("add");
   };
 
+  const handleBulkDetect = async () => {
+    setDetectingTpl(true); setDetectResult(null);
+    try {
+      const r = await fetch("/api/songs/bulk-detect-template", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ templates: templates.map(t => ({ id: t.id, 内容: t.内容 })) }),
+      });
+      const d = await r.json();
+      if (d.error) { showToast(d.error, false); return; }
+      setDetectResult(d);
+      showToast(`${d.updated}件を自動判定しました`);
+      await fetchSongs();
+    } catch { showToast("失敗しました", false); }
+    setDetectingTpl(false);
+  };
+
   const handleAddTeam = async () => {
     if(!newTeamName.trim()) return; setAddingTeam(true);
     try {
@@ -348,22 +365,7 @@ export default function Home() {
     } catch{showToast("追加に失敗しました",false);}
     setAddingTeam(false);
   };
-const handleBulkDetect = async () => {
-  setDetectingTpl(true); setDetectResult(null);
-  try {
-    const r = await fetch("/api/songs/bulk-detect-template", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ templates: templates.map(t => ({ id: t.id, 内容: t.内容 })) }),
-    });
-    const d = await r.json();
-    if (d.error) { showToast(d.error, false); return; }
-    setDetectResult(d);
-    showToast(`${d.updated}件を自動判定しました`);
-    await fetchSongs();
-  } catch { showToast("失敗しました", false); }
-  setDetectingTpl(false);
-};
+
   const teamColor=(t:string)=>TEAM_COLORS[t]||"#334a66";
   const tplMap = Object.fromEntries(templates.map(t=>[t.id,t]));
 
@@ -779,6 +781,10 @@ const handleBulkDetect = async () => {
             </div>
             <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:10,padding:16}}>
               <div style={{fontSize:14,fontWeight:700,marginBottom:4,color:"var(--accent-light)"}}>📝 コールテンプレート</div>
+              <div style={{fontSize:12,color:"var(--text-muted)",marginBottom:12}}>
+                <code style={{background:"var(--bg3)",padding:"1px 5px",borderRadius:3}}>⚪︎⚪︎</code> がキーワードで置換されます。内容を編集すると使用中の応援歌のコールも自動更新されます。
+              </div>
+
               {/* 一括判定ボタン */}
               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,padding:"10px 12px",background:"var(--bg3)",borderRadius:8}}>
                 <div style={{flex:1}}>
@@ -795,9 +801,7 @@ const handleBulkDetect = async () => {
                   {detectingTpl?"判定中…":"一括判定"}
                 </button>
               </div>
-              <div style={{fontSize:12,color:"var(--text-muted)",marginBottom:12}}>
-                <code style={{background:"var(--bg3)",padding:"1px 5px",borderRadius:3}}>⚪︎⚪︎</code> がキーワードで置換されます。内容を編集すると使用中の応援歌のコールも自動更新されます。
-              </div>
+
               {/* 新規追加 */}
               <div style={{display:"flex",flexDirection:"column",gap:7,marginBottom:14,padding:12,background:"var(--bg3)",borderRadius:8}}>
                 <div style={{fontSize:12,color:"var(--text-muted)"}}>新しいテンプレートを追加</div>
