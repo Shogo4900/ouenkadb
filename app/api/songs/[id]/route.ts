@@ -24,6 +24,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (body.汎用 !== undefined) properties["汎用"] = { checkbox: body.汎用 };
     if (body.良曲 !== undefined) properties["良曲"] = { checkbox: body.良曲 };
     if (body.重複除外 !== undefined) properties["重複除外"] = { checkbox: body.重複除外 };
+    if (body.テンプレートなし !== undefined) properties["テンプレートなし"] = { checkbox: body.テンプレートなし };
     if (body.汎用の対象 !== undefined) properties["汎用の対象"] = { multi_select: (body.汎用の対象 as string[]).map(n => ({ name: n })) };
     if (body.流用 !== undefined) properties["流用"] = { relation: (body.流用 as string[]).map(id => ({ id })) };
     if (body.テンプレートID !== undefined) properties["テンプレートID"] = { rich_text: [{ text: { content: body.テンプレートID } }] };
