@@ -5,14 +5,22 @@ const TEMPLATE_DB_ID = process.env.NOTION_TEMPLATE_DB_ID!;
 const DATA_SOURCE_ID = "d988b900-6adc-830d-ac5f-879a083a50bb";
 
 async function fetchTemplates() {
-  const res = await (notion as any).search({
-    filter: { property: "object", value: "page" },
-    page_size: 100,
-  });
-  const pages = (res.results as any[]).filter(p =>
+  const all: any[] = [];
+  let cursor: string | undefined = undefined;
+  while (true) {
+    const res: any = await (notion as any).search({
+      filter: { property: "object", value: "page" },
+      page_size: 100,
+      ...(cursor ? { start_cursor: cursor } : {}),
+    });
+    all.push(...res.results);
+    if (!res.has_more || !res.next_cursor) break;
+    cursor = res.next_cursor;
+  }
+  const matched = all.filter(p =>
     p.parent?.database_id?.replace(/-/g,"") === TEMPLATE_DB_ID.replace(/-/g,"")
   );
-  return pages.map((p: any) => ({
+  return matched.map((p: any) => ({
     id: p.id,
     名前: p.properties?.["名前"]?.title?.map((t: any) => t.plain_text).join("") ?? "",
     内容: p.properties?.["内容"]?.rich_text?.map((t: any) => t.plain_text).join("") ?? "",
@@ -49,21 +57,19 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// PATCH /api/templates — テンプレート内容を編集 + 使用中レコードを一括更新
 export async function PATCH(req: NextRequest) {
   try {
     const { id, 名前, 内容 } = await req.json();
     if (!id || !内容?.trim())
       return NextResponse.json({ error: "id と内容は必須です" }, { status: 400 });
 
-    // 1. テンプレート自体を更新
     const updateProps: Record<string, any> = {
       内容: { rich_text: [{ text: { content: 内容 } }] },
     };
     if (名前?.trim()) updateProps["名前"] = { title: [{ text: { content: 名前 } }] };
     await notion.pages.update({ page_id: id, properties: updateProps });
 
-    // 2. このテンプレートを使っている応援歌を全件取得して一括更新
+    // このテンプレートを使っている応援歌を全件取得して一括更新
     const all: any[] = [];
     let cursor: string | undefined = undefined;
     while (true) {
@@ -77,7 +83,6 @@ export async function PATCH(req: NextRequest) {
       cursor = res.next_cursor;
     }
 
-    // テンプレートIDが一致するレコードのみ更新
     const targets = all.filter(p => {
       const tplId = p.properties?.["テンプレートID"]?.rich_text?.map((t: any) => t.plain_text).join("") ?? "";
       return tplId === id;
