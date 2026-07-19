@@ -119,6 +119,8 @@ function Field({label,children}:{label:string;children:React.ReactNode}) {
 
 export default function Home() {
   const [allSongs, setAllSongs] = useState<Song[]>([]);
+  const [detectingTpl, setDetectingTpl] = useState(false);
+  const [detectResult, setDetectResult] = useState<{updated:number,undetected:number,total:number}|null>(null);
   const [teams, setTeams] = useState<string[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(false);
@@ -346,7 +348,22 @@ export default function Home() {
     } catch{showToast("追加に失敗しました",false);}
     setAddingTeam(false);
   };
-
+const handleBulkDetect = async () => {
+  setDetectingTpl(true); setDetectResult(null);
+  try {
+    const r = await fetch("/api/songs/bulk-detect-template", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ templates: templates.map(t => ({ id: t.id, 内容: t.内容 })) }),
+    });
+    const d = await r.json();
+    if (d.error) { showToast(d.error, false); return; }
+    setDetectResult(d);
+    showToast(`${d.updated}件を自動判定しました`);
+    await fetchSongs();
+  } catch { showToast("失敗しました", false); }
+  setDetectingTpl(false);
+};
   const teamColor=(t:string)=>TEAM_COLORS[t]||"#334a66";
   const tplMap = Object.fromEntries(templates.map(t=>[t.id,t]));
 
