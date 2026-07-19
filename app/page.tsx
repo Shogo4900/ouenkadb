@@ -77,7 +77,9 @@ function applyTemplate(template: string, keyword: string): string {
 
 // コールからテンプレートを推定
 function guessTemplate(call: string, templates: Template[]): Template | null {
-  for (const tpl of templates) {
+  // 内容が長い（具体的な）テンプレートを優先してマッチ
+  const sorted = [...templates].sort((a, b) => b.内容.length - a.内容.length);
+  for (const tpl of sorted) {
     // ⚪︎⚪︎を.*に変えて正規表現でマッチを試みる
     const escaped = tpl.内容.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/⚪︎⚪︎/g, "(.+)");
     try {
