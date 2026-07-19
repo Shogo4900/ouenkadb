@@ -20,7 +20,7 @@ function pageToSong(page: any) {
     歌詞: getText(p["歌詞"]),
     歌詞2: getText(p["歌詞2"]),
     歌詞3: getText(p["歌詞3"]),
-    コール: getText(p["コール"]),
+    コール: getText(p["コール"]) === "なし" ? "" : getText(p["コール"]),
     備考: getText(p["備考"]),
     汎用: p["汎用"]?.checkbox ?? false,
     汎用の対象: p["汎用の対象"]?.multi_select?.map((o: any) => o.name) ?? [],
