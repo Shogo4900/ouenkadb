@@ -5,36 +5,37 @@ const TEMPLATE_DB_ID = process.env.NOTION_TEMPLATE_DB_ID!;
 
 export async function GET() {
   try {
-    // databaseオブジェクトとして検索
-    const res1 = await (notion as any).search({
-      filter: { property: "object", value: "database" },
-      page_size: 100,
-    });
+    // searchをcursorでページングして全件取得
+    let all: any[] = [];
+    let cursor: string | undefined = undefined;
+    let page = 0;
+    while (page < 5) {
+      const res: any = await (notion as any).search({
+        filter: { property: "object", value: "page" },
+        page_size: 100,
+        ...(cursor ? { start_cursor: cursor } : {}),
+      });
+      all.push(...res.results);
+      page++;
+      if (!res.has_more || !res.next_cursor) break;
+      cursor = res.next_cursor;
+    }
 
-    const dbs = (res1.results as any[]).map((d:any) => ({
-      id: d.id,
-      id_clean: d.id.replace(/-/g,""),
-      title: d.title?.[0]?.plain_text ?? "",
-    }));
-
-    // pageオブジェクトで全件取得（cursor使って2ページ目も）
-    const res2 = await (notion as any).search({
-      filter: { property: "object", value: "page" },
-      page_size: 100,
-      start_cursor: res1.next_cursor ?? undefined,
-    });
-
-    const pages2 = (res2.results as any[]);
-    const matched2 = pages2.filter(p =>
+    const matched = all.filter(p =>
       p.parent?.database_id?.replace(/-/g,"") === TEMPLATE_DB_ID.replace(/-/g,"")
     );
 
+    const parentIds = [...new Set(all.map((p:any) => p.parent?.database_id).filter(Boolean))];
+
     return NextResponse.json({
       TEMPLATE_DB_ID,
-      databases_found: dbs,
-      page2_total: pages2.length,
-      page2_matched: matched2.length,
-      page2_parent_ids: [...new Set(pages2.map((p:any)=>p.parent?.database_id).filter(Boolean))],
+      total_pages_scanned: all.length,
+      matched: matched.length,
+      parent_db_ids_found: parentIds,
+      matched_detail: matched.slice(0,3).map((p:any) => ({
+        id: p.id,
+        props: Object.keys(p.properties ?? {}),
+      })),
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message });
