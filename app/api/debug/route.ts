@@ -5,21 +5,26 @@ const TEMPLATE_DB_ID = process.env.NOTION_TEMPLATE_DB_ID!;
 
 export async function GET() {
   try {
-    // dataSources一覧を取得してテンプレートDBのdata_source_idを探す
-    const res = await (notion as any).dataSources.retrieve({
-      data_source_id: TEMPLATE_DB_ID,
+    // 通常のpages APIでテンプレートDBの子ページを取得
+    const res = await (notion as any).search({
+      query: "",
+      filter: { property: "object", value: "page" },
+      page_size: 100,
+      sort: { direction: "descending", timestamp: "last_edited_time" },
     });
-    return NextResponse.json({ res });
-  } catch (e1: any) {
-    // retrieveがなければlistを試す
-    try {
-      const res2 = await (notion as any).dataSources.query({
-        data_source_id: TEMPLATE_DB_ID,
-        query: `SELECT * FROM "collection://${TEMPLATE_DB_ID}" LIMIT 5`,
-      });
-      return NextResponse.json({ via_query: res2.results?.slice(0,2) });
-    } catch (e2: any) {
-      return NextResponse.json({ e1: e1.message, e2: e2.message });
-    }
+
+    const all = res.results as any[];
+    const matched = all.filter(p =>
+      p.parent?.database_id?.replace(/-/g,"") === TEMPLATE_DB_ID.replace(/-/g,"")
+    );
+
+    return NextResponse.json({
+      TEMPLATE_DB_ID,
+      total_from_search: all.length,
+      matched: matched.length,
+      parent_db_ids_found: [...new Set(all.map((p:any) => p.parent?.database_id).filter(Boolean))],
+    });
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message });
   }
 }
