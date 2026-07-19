@@ -29,6 +29,7 @@ function pageToSong(page: any) {
     流用: p["流用"]?.relation?.map((r: any) => r.id) ?? [],
     テンプレートID: getText(p["テンプレートID"]),
     テンプレートキーワード: getText(p["テンプレートキーワード"]),
+    テンプレートなし: p["テンプレートなし"]?.checkbox ?? false,
     notionId: p["ID"]?.unique_id?.number ?? null,
   };
 }
@@ -71,6 +72,7 @@ export async function POST(req: NextRequest) {
       汎用: { checkbox: body.汎用 ?? false },
       良曲: { checkbox: body.良曲 ?? false },
       重複除外: { checkbox: false },
+      テンプレートなし: { checkbox: body.テンプレートなし ?? false },
       汎用の対象: { multi_select: (body.汎用の対象 ?? []).map((n: string) => ({ name: n })) },
       流用: { relation: (body.流用 ?? []).map((id: string) => ({ id })) },
       テンプレートID: { rich_text: [{ text: { content: body.テンプレートID ?? "" } }] },
