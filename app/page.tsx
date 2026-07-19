@@ -18,7 +18,9 @@ type Song = {
   id: string; 選手名: string; チーム名: string; 前奏: string;
   歌詞: string; 歌詞2: string; 歌詞3: string; コール: string;
   備考: string; 汎用: boolean; 汎用の対象: string[]; 良曲: boolean;
-  重複除外: boolean; 流用: string[]; notionId: number | null;
+  重複除外: boolean; 流用: string[];
+  テンプレートID: string; テンプレートキーワード: string;
+  notionId: number | null;
 };
 
 type Template = { id: string; 名前: string; 内容: string };
@@ -29,6 +31,7 @@ const DRAFT_KEY = "ouen_draft";
 const emptyForm = (): Partial<Song> => ({
   選手名:"", チーム名:"", 前奏:"", 歌詞:"", 歌詞2:"", 歌詞3:"",
   コール:"", 備考:"", 汎用:false, 汎用の対象:[], 良曲:false, 流用:[],
+  テンプレートID:"", テンプレートキーワード:"",
 });
 
 function loadDraft(): Partial<Song> {
@@ -70,6 +73,27 @@ function detectDupes(songs: Song[]): DupePair[] {
 
 function applyTemplate(template: string, keyword: string): string {
   return template.replace(/⚪︎⚪︎/g, keyword);
+}
+
+// コールからテンプレートを推定
+function guessTemplate(call: string, templates: Template[]): Template | null {
+  for (const tpl of templates) {
+    // ⚪︎⚪︎を.*に変えて正規表現でマッチを試みる
+    const escaped = tpl.内容.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/⚪︎⚪︎/g, "(.+)");
+    try {
+      const regex = new RegExp(`^${escaped}$`);
+      if (regex.test(call)) return tpl;
+    } catch {}
+  }
+  return null;
+}
+
+function extractKeyword(call: string, tpl: Template): string {
+  const escaped = tpl.内容.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/⚪︎⚪︎/g, "(.+)");
+  try {
+    const match = call.match(new RegExp(`^${escaped}$`));
+    return match ? match[1] : "";
+  } catch { return ""; }
 }
 
 const css = {
@@ -117,18 +141,21 @@ export default function Home() {
   const [newTplName, setNewTplName] = useState("");
   const [newTplContent, setNewTplContent] = useState("");
   const [addingTpl, setAddingTpl] = useState(false);
+  const [editingTpl, setEditingTpl] = useState<Template|null>(null);
+  const [editTplContent, setEditTplContent] = useState("");
+  const [editTplName, setEditTplName] = useState("");
+  const [savingTpl, setSavingTpl] = useState(false);
   const [clubFilter, setClubFilter] = useState("");
   const [ryuyoQuery, setRyuyoQuery] = useState("");
+  // テンプレート不明警告（編集時）
+  const [tplWarning, setTplWarning] = useState(false);
 
   const showToast = (msg:string,ok=true) => {
-    setToast({msg,ok}); setTimeout(()=>setToast(null),3000);
+    setToast({msg,ok}); setTimeout(()=>setToast(null),3500);
   };
 
-  // addタブに切り替えたとき、新規追加モードなら下書きを復元
   useEffect(() => {
-    if (tab === "add" && !editId) {
-      setForm(loadDraft());
-    }
+    if (tab === "add" && !editId) setForm(loadDraft());
   }, [tab, editId]);
 
   useEffect(() => {
@@ -177,7 +204,6 @@ export default function Home() {
   })();
 
   const dupes = detectDupes(allSongs);
-
   const ryuyoCandidates = ryuyoQuery.trim()
     ? allSongs.filter(s=>s.id!==editId&&(s.選手名.includes(ryuyoQuery)||s.チーム名.includes(ryuyoQuery)))
     : [];
@@ -197,7 +223,7 @@ export default function Home() {
       showToast(isEdit?"更新しました":"登録しました");
       const savedEditId=editId;
       clearDraft();
-      setForm(emptyForm());setEditId(null);setCallKeyword("");setTab("list");
+      setForm(emptyForm());setEditId(null);setCallKeyword("");setTplWarning(false);setTab("list");
       await fetchSongs(); await fetchTeams();
       if(savedEditId){
         setTimeout(()=>{
@@ -264,15 +290,50 @@ export default function Home() {
     } catch{showToast("削除に失敗しました",false);}
   };
 
+  const handleSaveTemplate = async () => {
+    if(!editingTpl||!editTplContent.trim()) return;
+    setSavingTpl(true);
+    try {
+      const r=await fetch("/api/templates",{method:"PATCH",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({id:editingTpl.id,名前:editTplName,内容:editTplContent})});
+      const d=await r.json();
+      if(d.error){showToast(d.error,false);setSavingTpl(false);return;}
+      setTemplates(d.templates);
+      showToast(`保存しました（${d.updated}件のコールを更新）`);
+      setEditingTpl(null);
+      // ローカルのsongs内コールも更新
+      await fetchSongs();
+    } catch{showToast("保存に失敗しました",false);}
+    setSavingTpl(false);
+  };
+
   const applyTpl = (tpl:Template) => {
     if(!callKeyword.trim()){showToast("先にキーワード（⚪︎⚪︎）を入力してください",false);return;}
-    setForm(prev=>({...prev,コール:applyTemplate(tpl.内容,callKeyword.trim())}));
+    const newCall = applyTemplate(tpl.内容, callKeyword.trim());
+    setForm(prev=>({...prev, コール:newCall, テンプレートID:tpl.id, テンプレートキーワード:callKeyword.trim()}));
     setShowTemplateMenu(false);
     showToast(`「${tpl.名前}」を適用しました`);
   };
 
   const startEdit = (song:Song) => {
-    setForm({...song}); setEditId(song.id); setCallKeyword(""); setRyuyoQuery(""); setTab("add");
+    setForm({...song});
+    setEditId(song.id);
+    setCallKeyword(song.テンプレートキーワード||"");
+    setRyuyoQuery("");
+    setTplWarning(false);
+    // コールがあるがテンプレートIDがない場合、テンプレートを推定
+    if(song.コール && !song.テンプレートID) {
+      const guessed = guessTemplate(song.コール, templates);
+      if(guessed) {
+        const kw = extractKeyword(song.コール, guessed);
+        setForm(prev=>({...prev, テンプレートID:guessed.id, テンプレートキーワード:kw}));
+        setCallKeyword(kw);
+        showToast(`テンプレート「${guessed.名前}」を自動検出しました`);
+      } else if(song.コール) {
+        setTplWarning(true);
+      }
+    }
+    setTab("add");
   };
 
   const handleAddTeam = async () => {
@@ -287,6 +348,7 @@ export default function Home() {
   };
 
   const teamColor=(t:string)=>TEAM_COLORS[t]||"#334a66";
+  const tplMap = Object.fromEntries(templates.map(t=>[t.id,t]));
 
   const TABS=[
     {key:"list" as const,label:"一覧"},
@@ -366,6 +428,7 @@ export default function Home() {
                   const isExp=expanded===song.id;
                   const color=teamColor(song.チーム名);
                   const ryuyoNames=(song.流用??[]).map(id=>songMap[id]?.選手名).filter(Boolean);
+                  const tplName=song.テンプレートID?tplMap[song.テンプレートID]?.名前:null;
                   return(
                     <div key={song.id} id={`song-${song.id}`} style={{background:"var(--bg2)",border:"1px solid var(--border)",borderLeft:`3px solid ${color}`,borderRadius:8,overflow:"hidden"}}>
                       <div style={{padding:"9px 11px",display:"flex",alignItems:"center",gap:6}}>
@@ -374,6 +437,7 @@ export default function Home() {
                             <span style={{fontWeight:700,fontSize:14}}>{song.選手名||"（名前なし）"}</span>
                             {song.良曲&&<span style={{fontSize:10,background:"#1a3a5e",color:"var(--accent-light)",padding:"1px 5px",borderRadius:4}}>⭐良曲</span>}
                             {song.汎用&&<span style={{fontSize:10,background:"#1a3a2e",color:"var(--green)",padding:"1px 5px",borderRadius:4}}>汎用</span>}
+                            {tplName&&<span style={{fontSize:10,background:"#1a1a3a",color:"#b0a0e0",padding:"1px 5px",borderRadius:4}}>📝{tplName}</span>}
                             {ryuyoNames.length>0&&<span style={{fontSize:10,background:"#1a2a3a",color:"#a0b4c8",padding:"1px 5px",borderRadius:4}}>流用: {ryuyoNames.join(", ")}</span>}
                             {song.重複除外&&<span style={{fontSize:10,background:"#222",color:"#666",padding:"1px 5px",borderRadius:4}}>除外済</span>}
                           </div>
@@ -433,6 +497,20 @@ export default function Home() {
               </div>
               {!editId&&<span style={{fontSize:11,color:"var(--text-muted)"}}>入力内容は自動保存されます</span>}
             </div>
+
+            {/* テンプレート不明警告 */}
+            {tplWarning&&(
+              <div style={{background:"#1c1005",border:"1px solid #92400e",borderRadius:8,padding:"10px 14px",marginBottom:12,fontSize:13,color:"#fbbf24"}}>
+                ⚠️ コールが手動入力されています。テンプレートを適用するか、キーワードを手動で入力してください。
+                <div style={{display:"flex",gap:8,marginTop:8,alignItems:"center"}}>
+                  <input value={form.テンプレートキーワード??""} onChange={e=>setForm(prev=>({...prev,テンプレートキーワード:e.target.value}))}
+                    placeholder="キーワードを手動入力（例：山田）"
+                    style={{...css.input,fontSize:13,flex:1}} />
+                  <button onClick={()=>setTplWarning(false)} style={{...css.btn(),padding:"4px 10px",fontSize:12}}>閉じる</button>
+                </div>
+              </div>
+            )}
+
             <div style={{display:"flex",flexDirection:"column",gap:11}}>
               <Field label="選手名 *">
                 <input value={form.選手名??""} onChange={e=>setForm({...form,選手名:e.target.value})} placeholder="例：田中将大" style={css.input} />
@@ -454,9 +532,18 @@ export default function Home() {
               ))}
               <Field label="コール">
                 <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                  {/* テンプレート情報表示 */}
+                  {form.テンプレートID&&tplMap[form.テンプレートID]&&(
+                    <div style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"#b0a0e0",background:"#1a1a3a",padding:"5px 10px",borderRadius:6}}>
+                      <span>📝 {tplMap[form.テンプレートID].名前}</span>
+                      <span style={{color:"var(--text-muted)"}}>キーワード: {form.テンプレートキーワード||"（未設定）"}</span>
+                      <button onClick={()=>setForm(prev=>({...prev,テンプレートID:"",テンプレートキーワード:""}))}
+                        style={{marginLeft:"auto",...css.btn(),padding:"2px 7px",fontSize:11,color:"var(--text-muted)"}}>解除</button>
+                    </div>
+                  )}
                   <div style={{display:"flex",gap:6,alignItems:"center"}}>
                     <span style={{fontSize:12,color:"var(--text-muted)",whiteSpace:"nowrap"}}>⚪︎⚪︎ =</span>
-                    <input value={callKeyword} onChange={e=>setCallKeyword(e.target.value)}
+                    <input value={callKeyword} onChange={e=>{setCallKeyword(e.target.value);setForm(prev=>({...prev,テンプレートキーワード:e.target.value}));}}
                       placeholder="コール内のキーワード（例：山田）"
                       style={{...css.input,flex:1,fontSize:13}} />
                     <div style={{position:"relative"}}>
@@ -469,10 +556,11 @@ export default function Home() {
                           {templates.length===0?(
                             <div style={{padding:"12px 14px",fontSize:13,color:"var(--text-muted)"}}>テンプレートがありません</div>
                           ):templates.map(tpl=>(
-                            <div key={tpl.id} style={{padding:"8px 12px",borderBottom:"1px solid var(--border)",cursor:"pointer"}}
+                            <div key={tpl.id} style={{padding:"8px 12px",borderBottom:"1px solid var(--border)",cursor:"pointer",
+                              background:form.テンプレートID===tpl.id?"#1a1a3a":""}}
                               onClick={()=>applyTpl(tpl)}
                               onMouseEnter={e=>(e.currentTarget.style.background="#111d2e")}
-                              onMouseLeave={e=>(e.currentTarget.style.background="")}>
+                              onMouseLeave={e=>(e.currentTarget.style.background=form.テンプレートID===tpl.id?"#1a1a3a":"")}>
                               <div style={{fontSize:13,fontWeight:600,color:"var(--text)"}}>{tpl.名前}</div>
                               <div style={{fontSize:11,color:"var(--text-muted)",marginTop:2,fontFamily:"monospace"}}>
                                 {callKeyword?applyTemplate(tpl.内容,callKeyword):tpl.内容}
@@ -483,7 +571,7 @@ export default function Home() {
                       )}
                     </div>
                   </div>
-                  <textarea value={form.コール??""} onChange={e=>setForm({...form,コール:e.target.value})}
+                  <textarea value={form.コール??""} onChange={e=>{setForm({...form,コール:e.target.value});}}
                     rows={3} placeholder="コールの内容（テンプレ適用で自動入力）"
                     style={{...css.input,resize:"vertical"}} />
                 </div>
@@ -564,7 +652,7 @@ export default function Home() {
                 <button onClick={handleSubmit} disabled={submitting} style={{...css.btn(true),flex:1,padding:"9px 0",fontSize:14}}>
                   {submitting?"保存中…":(editId?"更新する":"登録する")}
                 </button>
-                <button onClick={()=>{clearDraft();setForm(emptyForm());setEditId(null);setCallKeyword("");setShowTemplateMenu(false);setRyuyoQuery("");setTab("list");}}
+                <button onClick={()=>{clearDraft();setForm(emptyForm());setEditId(null);setCallKeyword("");setShowTemplateMenu(false);setRyuyoQuery("");setTplWarning(false);setTab("list");}}
                   style={{...css.btn(),padding:"9px 14px"}}>キャンセル</button>
               </div>
             </div>
@@ -675,8 +763,9 @@ export default function Home() {
             <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:10,padding:16}}>
               <div style={{fontSize:14,fontWeight:700,marginBottom:4,color:"var(--accent-light)"}}>📝 コールテンプレート</div>
               <div style={{fontSize:12,color:"var(--text-muted)",marginBottom:12}}>
-                <code style={{background:"var(--bg3)",padding:"1px 5px",borderRadius:3}}>⚪︎⚪︎</code> がキーワードで置換されます
+                <code style={{background:"var(--bg3)",padding:"1px 5px",borderRadius:3}}>⚪︎⚪︎</code> がキーワードで置換されます。内容を編集すると使用中の応援歌のコールも自動更新されます。
               </div>
+              {/* 新規追加 */}
               <div style={{display:"flex",flexDirection:"column",gap:7,marginBottom:14,padding:12,background:"var(--bg3)",borderRadius:8}}>
                 <div style={{fontSize:12,color:"var(--text-muted)"}}>新しいテンプレートを追加</div>
                 <input value={newTplName} onChange={e=>setNewTplName(e.target.value)} placeholder="テンプレート名（例：かっ飛ばせ）" style={css.input} />
@@ -687,17 +776,49 @@ export default function Home() {
                   {addingTpl?"追加中…":"追加"}
                 </button>
               </div>
+              {/* テンプレート一覧 */}
               {templates.length===0?(
                 <div style={{color:"var(--text-muted)",fontSize:13,textAlign:"center",padding:"12px 0"}}>テンプレートがありません</div>
               ):(
-                <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
                   {templates.map(tpl=>(
-                    <div key={tpl.id} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"9px 11px",background:"var(--bg3)",borderRadius:7}}>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:13,fontWeight:600,marginBottom:2}}>{tpl.名前}</div>
-                        <div style={{fontSize:12,color:"var(--text-muted)",fontFamily:"monospace",wordBreak:"break-all"}}>{tpl.内容}</div>
-                      </div>
-                      <button onClick={()=>handleDeleteTemplate(tpl.id)} style={{...css.btn(false,true),padding:"3px 9px",fontSize:11,flexShrink:0}}>削除</button>
+                    <div key={tpl.id} style={{background:"var(--bg3)",borderRadius:7,overflow:"hidden"}}>
+                      {editingTpl?.id===tpl.id?(
+                        /* 編集モード */
+                        <div style={{padding:"10px 12px",display:"flex",flexDirection:"column",gap:7}}>
+                          <input value={editTplName} onChange={e=>setEditTplName(e.target.value)}
+                            style={{...css.input,fontSize:13,fontWeight:600}} />
+                          <textarea value={editTplContent} onChange={e=>setEditTplContent(e.target.value)}
+                            rows={2} style={{...css.input,resize:"vertical",fontFamily:"monospace",fontSize:13}} />
+                          <div style={{fontSize:11,color:"#fbbf24"}}>
+                            ⚠️ 保存するとこのテンプレートを使用中の全応援歌のコールが自動更新されます
+                          </div>
+                          <div style={{display:"flex",gap:6}}>
+                            <button onClick={handleSaveTemplate} disabled={savingTpl}
+                              style={{...css.btn(true),padding:"5px 14px",fontSize:12}}>
+                              {savingTpl?"保存中…":"保存して更新"}
+                            </button>
+                            <button onClick={()=>setEditingTpl(null)} style={{...css.btn(),padding:"5px 10px",fontSize:12}}>キャンセル</button>
+                          </div>
+                        </div>
+                      ):(
+                        /* 通常表示 */
+                        <div style={{display:"flex",alignItems:"flex-start",gap:10,padding:"9px 11px"}}>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:13,fontWeight:600,marginBottom:2}}>{tpl.名前}</div>
+                            <div style={{fontSize:12,color:"var(--text-muted)",fontFamily:"monospace",wordBreak:"break-all"}}>{tpl.内容}</div>
+                            <div style={{fontSize:11,color:"var(--text-muted)",marginTop:3}}>
+                              使用中: {allSongs.filter(s=>s.テンプレートID===tpl.id).length}件
+                            </div>
+                          </div>
+                          <div style={{display:"flex",gap:5,flexShrink:0}}>
+                            <button onClick={()=>{setEditingTpl(tpl);setEditTplName(tpl.名前);setEditTplContent(tpl.内容);}}
+                              style={{...css.btn(),padding:"3px 9px",fontSize:11}}>編集</button>
+                            <button onClick={()=>handleDeleteTemplate(tpl.id)}
+                              style={{...css.btn(false,true),padding:"3px 9px",fontSize:11}}>削除</button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
