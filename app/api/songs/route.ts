@@ -27,6 +27,8 @@ function pageToSong(page: any) {
     良曲: p["良曲"]?.checkbox ?? false,
     重複除外: p["重複除外"]?.checkbox ?? false,
     流用: p["流用"]?.relation?.map((r: any) => r.id) ?? [],
+    テンプレートID: getText(p["テンプレートID"]),
+    テンプレートキーワード: getText(p["テンプレートキーワード"]),
     notionId: p["ID"]?.unique_id?.number ?? null,
   };
 }
@@ -47,10 +49,9 @@ async function fetchAllSongs() {
   return all.map(pageToSong);
 }
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   try {
-    const songs = await fetchAllSongs();
-    return NextResponse.json({ songs });
+    return NextResponse.json({ songs: await fetchAllSongs() });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
@@ -72,13 +73,11 @@ export async function POST(req: NextRequest) {
       重複除外: { checkbox: false },
       汎用の対象: { multi_select: (body.汎用の対象 ?? []).map((n: string) => ({ name: n })) },
       流用: { relation: (body.流用 ?? []).map((id: string) => ({ id })) },
+      テンプレートID: { rich_text: [{ text: { content: body.テンプレートID ?? "" } }] },
+      テンプレートキーワード: { rich_text: [{ text: { content: body.テンプレートキーワード ?? "" } }] },
     };
     if (body.チーム名) properties["チーム名"] = { select: { name: body.チーム名 } };
-
-    const page = await notion.pages.create({
-      parent: { database_id: DATABASE_ID },
-      properties,
-    });
+    const page = await notion.pages.create({ parent: { database_id: DATABASE_ID }, properties });
     return NextResponse.json({ id: page.id });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
