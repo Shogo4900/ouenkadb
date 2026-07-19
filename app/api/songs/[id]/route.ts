@@ -4,8 +4,7 @@ import { notion } from "@/lib/notion";
 function toPageId(id: string): string {
   const match = id.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i)
              ?? id.match(/([0-9a-f]{32})/i);
-  if (match) return match[1];
-  return id;
+  return match ? match[1] : id;
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -13,7 +12,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const { id } = await params;
     const pageId = toPageId(decodeURIComponent(id));
     const body = await req.json();
-
     const properties: Record<string, any> = {};
     if (body.選手名 !== undefined) properties["選手名"] = { title: [{ text: { content: body.選手名 } }] };
     if (body.チーム名 !== undefined) properties["チーム名"] = body.チーム名 ? { select: { name: body.チーム名 } } : { select: null };
@@ -26,13 +24,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (body.汎用 !== undefined) properties["汎用"] = { checkbox: body.汎用 };
     if (body.良曲 !== undefined) properties["良曲"] = { checkbox: body.良曲 };
     if (body.重複除外 !== undefined) properties["重複除外"] = { checkbox: body.重複除外 };
-    if (body.汎用の対象 !== undefined) properties["汎用の対象"] = {
-      multi_select: (body.汎用の対象 as string[]).map(n => ({ name: n }))
-    };
-    if (body.流用 !== undefined) properties["流用"] = {
-      relation: (body.流用 as string[]).map(id => ({ id }))
-    };
-
+    if (body.汎用の対象 !== undefined) properties["汎用の対象"] = { multi_select: (body.汎用の対象 as string[]).map(n => ({ name: n })) };
+    if (body.流用 !== undefined) properties["流用"] = { relation: (body.流用 as string[]).map(id => ({ id })) };
+    if (body.テンプレートID !== undefined) properties["テンプレートID"] = { rich_text: [{ text: { content: body.テンプレートID } }] };
+    if (body.テンプレートキーワード !== undefined) properties["テンプレートキーワード"] = { rich_text: [{ text: { content: body.テンプレートキーワード } }] };
     await notion.pages.update({ page_id: pageId, properties });
     return NextResponse.json({ ok: true });
   } catch (e: any) {
