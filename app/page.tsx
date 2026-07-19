@@ -779,6 +779,22 @@ const handleBulkDetect = async () => {
             </div>
             <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:10,padding:16}}>
               <div style={{fontSize:14,fontWeight:700,marginBottom:4,color:"var(--accent-light)"}}>📝 コールテンプレート</div>
+              {/* 一括判定ボタン */}
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,padding:"10px 12px",background:"var(--bg3)",borderRadius:8}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:600,marginBottom:2}}>テンプレート一括判定</div>
+                  <div style={{fontSize:11,color:"var(--text-muted)"}}>テンプレートIDが未設定のコールを全件スキャンして自動で紐付けます</div>
+                  {detectResult&&(
+                    <div style={{fontSize:11,marginTop:4,color:"var(--green)"}}>
+                      完了: {detectResult.total}件中 {detectResult.updated}件を判定、{detectResult.undetected}件は判定不可
+                    </div>
+                  )}
+                </div>
+                <button onClick={handleBulkDetect} disabled={detectingTpl||templates.length===0}
+                  style={{...css.btn(true),padding:"6px 14px",fontSize:12,whiteSpace:"nowrap"}}>
+                  {detectingTpl?"判定中…":"一括判定"}
+                </button>
+              </div>
               <div style={{fontSize:12,color:"var(--text-muted)",marginBottom:12}}>
                 <code style={{background:"var(--bg3)",padding:"1px 5px",borderRadius:3}}>⚪︎⚪︎</code> がキーワードで置換されます。内容を編集すると使用中の応援歌のコールも自動更新されます。
               </div>
