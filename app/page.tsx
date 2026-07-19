@@ -124,7 +124,12 @@ export default function Home() {
     setToast({msg,ok}); setTimeout(()=>setToast(null),3000);
   };
 
-  useEffect(() => { setForm(loadDraft()); }, []);
+  // addタブに切り替えたとき、新規追加モードなら下書きを復元
+  useEffect(() => {
+    if (tab === "add" && !editId) {
+      setForm(loadDraft());
+    }
+  }, [tab, editId]);
 
   useEffect(() => {
     if (editId) return;
@@ -300,7 +305,7 @@ export default function Home() {
         </div>
         <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
           {TABS.map(({key,label,warn})=>(
-            <button key={key} onClick={()=>{if(key!=="add"){setEditId(null);setForm(emptyForm());}setTab(key);}}
+            <button key={key} onClick={()=>{if(key!=="add"){setEditId(null);}setTab(key);}}
               style={{...css.btn(tab===key,false,tab!==key&&!!warn),padding:"5px 10px",fontSize:12}}>
               {label}
             </button>
