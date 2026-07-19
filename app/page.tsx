@@ -19,7 +19,7 @@ type Song = {
   歌詞: string; 歌詞2: string; 歌詞3: string; コール: string;
   備考: string; 汎用: boolean; 汎用の対象: string[]; 良曲: boolean;
   重複除外: boolean; 流用: string[];
-  テンプレートID: string; テンプレートキーワード: string;
+  テンプレートID: string; テンプレートキーワード: string; テンプレートなし: boolean;
   notionId: number | null;
 };
 
@@ -31,7 +31,7 @@ const DRAFT_KEY = "ouen_draft";
 const emptyForm = (): Partial<Song> => ({
   選手名:"", チーム名:"", 前奏:"", 歌詞:"", 歌詞2:"", 歌詞3:"",
   コール:"", 備考:"", 汎用:false, 汎用の対象:[], 良曲:false, 流用:[],
-  テンプレートID:"", テンプレートキーワード:"",
+  テンプレートID:"", テンプレートキーワード:"", テンプレートなし:false,
 });
 
 function loadDraft(): Partial<Song> {
@@ -126,7 +126,7 @@ export default function Home() {
   const [filterQ, setFilterQ] = useState("");
   const [filterRyoku, setFilterRyoku] = useState(false);
   const [searchType, setSearchType] = useState<"name"|"lyrics">("name");
-  const [tab, setTab] = useState<"list"|"add"|"clubs"|"dupes"|"settings">("list");
+  const [tab, setTab] = useState<"list"|"add"|"clubs"|"dupes"|"undetected"|"settings">("list");
   const [form, setForm] = useState<Partial<Song>>(emptyForm);
   const [editId, setEditId] = useState<string|null>(null);
   const [expanded, setExpanded] = useState<string|null>(null);
@@ -324,19 +324,32 @@ export default function Home() {
     setCallKeyword(song.テンプレートキーワード||"");
     setRyuyoQuery("");
     setTplWarning(false);
-    // コールがあるがテンプレートIDがない場合、テンプレートを推定
-    if(song.コール && !song.テンプレートID) {
+    // テンプレートなし明示済みはそのまま
+    if(!song.テンプレートなし && song.コール && !song.テンプレートID) {
       const guessed = guessTemplate(song.コール, templates);
       if(guessed) {
         const kw = extractKeyword(song.コール, guessed);
         setForm(prev=>({...prev, テンプレートID:guessed.id, テンプレートキーワード:kw}));
         setCallKeyword(kw);
         showToast(`テンプレート「${guessed.名前}」を自動検出しました`);
-      } else if(song.コール) {
+      } else {
         setTplWarning(true);
       }
     }
     setTab("add");
+  };
+
+  // 一覧からテンプレートなしを即時トグル
+  const toggleTplNashi = async (song: Song) => {
+    const next = !song.テンプレートなし;
+    setAllSongs(prev=>prev.map(s=>s.id===song.id?{...s,テンプレートなし:next, テンプレートID:next?"":s.テンプレートID}:s));
+    try {
+      const r=await fetch(`/api/songs/${encodeURIComponent(song.id)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({テンプレートなし:next, ...(next?{テンプレートID:"",テンプレートキーワード:""}:{})})});
+      const d=await r.json();
+      if(d.error){showToast(d.error,false);setAllSongs(prev=>prev.map(s=>s.id===song.id?{...s,テンプレートなし:!next}:s));}
+      else showToast(next?"手動入力としてマークしました":"マークを解除しました");
+    } catch{showToast("更新に失敗しました",false);setAllSongs(prev=>prev.map(s=>s.id===song.id?{...s,テンプレートなし:!next}:s));}
   };
 
   const handleBulkDetect = async () => {
@@ -374,6 +387,7 @@ export default function Home() {
     {key:"add" as const,label:editId?"✏️ 編集":"＋ 追加"},
     {key:"clubs" as const,label:"🏟️ 球団"},
     {key:"dupes" as const,label:`⚠️${dupes.length>0?` (${dupes.length})`:""}`,warn:dupes.length>0},
+    {key:"undetected" as const,label:`❓ 未判定${allSongs.filter(s=>s.コール&&!s.テンプレートID&&!s.テンプレートなし).length>0?" ("+allSongs.filter(s=>s.コール&&!s.テンプレートID&&!s.テンプレートなし).length+")":""}`,warn:allSongs.filter(s=>s.コール&&!s.テンプレートID&&!s.テンプレートなし).length>0},
     {key:"settings" as const,label:"設定"},
   ];
 
@@ -458,6 +472,8 @@ export default function Home() {
                             {song.汎用&&<span style={{fontSize:10,background:"#1a3a2e",color:"var(--green)",padding:"1px 5px",borderRadius:4}}>汎用</span>}
                             {tplName&&<span style={{fontSize:10,background:"#1a1a3a",color:"#b0a0e0",padding:"1px 5px",borderRadius:4}}>📝{tplName}</span>}
                             {ryuyoNames.length>0&&<span style={{fontSize:10,background:"#1a2a3a",color:"#a0b4c8",padding:"1px 5px",borderRadius:4}}>流用: {ryuyoNames.join(", ")}</span>}
+                            {song.テンプレートなし&&<span style={{fontSize:10,background:"#2a1a00",color:"#f59e0b",padding:"1px 5px",borderRadius:4}}>手動</span>}
+                            {!song.テンプレートID&&!song.テンプレートなし&&song.コール&&<span style={{fontSize:10,background:"#1a1000",color:"#888",padding:"1px 5px",borderRadius:4}}>❓未判定</span>}
                             {song.重複除外&&<span style={{fontSize:10,background:"#222",color:"#666",padding:"1px 5px",borderRadius:4}}>除外済</span>}
                           </div>
                           {song.チーム名&&<div style={{fontSize:11,color:"var(--text-muted)",marginTop:1}}>{song.チーム名}</div>}
@@ -466,6 +482,11 @@ export default function Home() {
                           style={{...css.btn(),padding:"3px 8px",fontSize:14,
                             color:song.良曲?"#fbbf24":"var(--text-muted)",
                             borderColor:song.良曲?"#92400e":"var(--border)"}}>⭐</button>
+                        <button onClick={()=>toggleTplNashi(song)}
+                          title={song.テンプレートなし?"手動マークを解除":"テンプレートなし（手動）としてマーク"}
+                          style={{...css.btn(),padding:"3px 8px",fontSize:12,
+                            color:song.テンプレートなし?"#f59e0b":"var(--text-muted)",
+                            borderColor:song.テンプレートなし?"#92400e":"var(--border)"}}>手</button>
                         <button onClick={()=>startEdit(song)} style={{...css.btn(),padding:"3px 9px",fontSize:12}}>編集</button>
                         <button onClick={()=>setDeleteConfirm(song.id)} style={{...css.btn(false,true),padding:"3px 9px",fontSize:12}}>削除</button>
                         <span style={{color:"var(--text-muted)",cursor:"pointer",fontSize:12,userSelect:"none",padding:"0 2px"}}
@@ -560,6 +581,14 @@ export default function Home() {
                         style={{marginLeft:"auto",...css.btn(),padding:"2px 7px",fontSize:11,color:"var(--text-muted)"}}>解除</button>
                     </div>
                   )}
+                  {/* テンプレートなしマーク */}
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",fontSize:13}}>
+                      <input type="checkbox" checked={!!form.テンプレートなし}
+                        onChange={e=>setForm(prev=>({...prev,テンプレートなし:e.target.checked,...(e.target.checked?{テンプレートID:"",テンプレートキーワード:""}:{})}))} />
+                      <span style={{color:form.テンプレートなし?"#f59e0b":"var(--text-muted)"}}>手動入力（テンプレートなし）として記録</span>
+                    </label>
+                  </div>
                   <div style={{display:"flex",gap:6,alignItems:"center"}}>
                     <span style={{fontSize:12,color:"var(--text-muted)",whiteSpace:"nowrap"}}>⚪︎⚪︎ =</span>
                     <input value={callKeyword} onChange={e=>{setCallKeyword(e.target.value);setForm(prev=>({...prev,テンプレートキーワード:e.target.value}));}}
@@ -761,6 +790,43 @@ export default function Home() {
             )}
           </div>
         )}
+
+        {tab==="undetected"&&(()=>{
+          const undetected = allSongs.filter(s=>s.コール&&!s.テンプレートID&&!s.テンプレートなし);
+          return (
+          <div>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+              <div style={{fontSize:15,fontWeight:700,color:"#f59e0b"}}>❓ 未判定コール</div>
+              <span style={{fontSize:12,color:"var(--text-muted)"}}>コールはあるがテンプレート未設定 {undetected.length}件</span>
+            </div>
+            {undetected.length===0?(
+              <div style={{textAlign:"center",padding:40,color:"var(--text-muted)"}}>未判定のコールはありません 🎉</div>
+            ):(
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {undetected.map(song=>{
+                  const color=teamColor(song.チーム名);
+                  return(
+                    <div key={song.id} style={{background:"var(--bg2)",border:"1px solid #92400e",borderLeft:`3px solid ${color}`,borderRadius:8,overflow:"hidden"}}>
+                      <div style={{padding:"9px 11px",display:"flex",alignItems:"center",gap:7}}>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontWeight:700,fontSize:14}}>{song.選手名}</div>
+                          <div style={{fontSize:11,color:"var(--text-muted)",marginTop:1}}>{song.チーム名}</div>
+                          <div style={{fontSize:12,color:"#c8cce8",marginTop:4,background:"var(--bg3)",padding:"5px 8px",borderRadius:5,whiteSpace:"pre-wrap"}}>{song.コール}</div>
+                        </div>
+                        <div style={{display:"flex",flexDirection:"column",gap:5}}>
+                          <button onClick={()=>startEdit(song)} style={{...css.btn(true),padding:"4px 10px",fontSize:12}}>編集</button>
+                          <button onClick={()=>toggleTplNashi(song)}
+                            style={{...css.btn(),padding:"4px 10px",fontSize:12,color:"#f59e0b",borderColor:"#92400e"}}>手動</button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          );
+        })()}
 
         {tab==="settings"&&(
           <div style={{display:"flex",flexDirection:"column",gap:16}}>
