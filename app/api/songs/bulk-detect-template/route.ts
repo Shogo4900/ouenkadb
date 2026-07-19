@@ -15,7 +15,9 @@ function applyTemplate(template: string, keyword: string): string {
 }
 
 function guessTemplate(call: string, templates: { id: string; 内容: string }[]) {
-  for (const tpl of templates) {
+  // 内容が長い（具体的な）テンプレートを優先
+  const sorted = [...templates].sort((a, b) => b.内容.length - a.内容.length);
+  for (const tpl of sorted) {
     const escaped = tpl.内容
       .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
       .replace(/⚪︎⚪︎/g, "(.+)");
