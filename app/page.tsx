@@ -156,6 +156,9 @@ export default function Home() {
   // 一括判定
   const [detectingTpl, setDetectingTpl] = useState(false);
   const [detectResult, setDetectResult] = useState<{updated:number,undetected:number,total:number}|null>(null);
+  // 歌詞テキスト一括正規化
+  const [normalizingText, setNormalizingText] = useState(false);
+  const [normalizeResult, setNormalizeResult] = useState<{updated:number,unchanged:number,total:number}|null>(null);
 
   const showToast = (msg:string,ok=true) => {
     setToast({msg,ok}); setTimeout(()=>setToast(null),3500);
@@ -231,12 +234,12 @@ export default function Home() {
       const savedEditId=editId;
       clearDraft();
       setForm(emptyForm());setEditId(null);setCallKeyword("");setTplWarning(false);setTab("list");
-      await fetchSongs(); await fetchTeams();
       if(savedEditId){
         setTimeout(()=>{
-          document.getElementById(`song-${savedEditId}`)?.scrollIntoView({block:"center",behavior:"smooth"});
-        },100);
+          document.getElementById(`song-${savedEditId}`)?.scrollIntoView({block:"center",behavior:"auto"});
+        },30);
       }
+      await fetchSongs(); await fetchTeams();
     } catch{showToast("保存に失敗しました",false);}
     setSubmitting(false);
   };
@@ -370,6 +373,20 @@ export default function Home() {
       await fetchSongs();
     } catch{showToast("失敗しました",false);}
     setDetectingTpl(false);
+  };
+
+  const handleBulkNormalize = async () => {
+    if (!confirm("前奏・歌詞・歌詞2・歌詞3・交互演奏歌詞の全件に対して、全角スペース→半角、改行削除、！化、…化を一括適用します。よろしいですか？")) return;
+    setNormalizingText(true); setNormalizeResult(null);
+    try {
+      const r = await fetch("/api/songs/bulk-normalize-text", { method: "POST" });
+      const d = await r.json();
+      if (d.error) { showToast(d.error, false); return; }
+      setNormalizeResult(d);
+      showToast(`${d.updated}件のテキストを正規化しました`);
+      await fetchSongs();
+    } catch { showToast("失敗しました", false); }
+    setNormalizingText(false);
   };
 
   const handleAddTeam = async () => {
@@ -863,6 +880,27 @@ export default function Home() {
                 {teams.map(t=>(
                   <span key={t} style={{fontSize:13,background:"var(--bg3)",border:"1px solid var(--border)",borderLeft:`3px solid ${teamColor(t)}`,padding:"4px 9px",borderRadius:6}}>{t}</span>
                 ))}
+              </div>
+            </div>
+            <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:10,padding:16}}>
+              <div style={{fontSize:14,fontWeight:700,marginBottom:4,color:"var(--accent-light)"}}>✨ テキスト正規化</div>
+              <div style={{fontSize:12,color:"var(--text-muted)",marginBottom:8}}>
+                全角スペース→半角、改行削除、「!」→「！」、「...」→「…」を一括変換します（前奏・歌詞・歌詞2・歌詞3・交互演奏歌詞）
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"var(--bg3)",borderRadius:8}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:600,marginBottom:2}}>過去データを一括正規化</div>
+                  <div style={{fontSize:11,color:"var(--text-muted)"}}>全件をスキャンし、変換が必要なレコードのみ更新します</div>
+                  {normalizeResult&&(
+                    <div style={{fontSize:11,marginTop:4,color:"var(--green)"}}>
+                      完了: {normalizeResult.total}件中 {normalizeResult.updated}件を変換しました
+                    </div>
+                  )}
+                </div>
+                <button onClick={handleBulkNormalize} disabled={normalizingText}
+                  style={{...css.btn(true),padding:"6px 14px",fontSize:12,whiteSpace:"nowrap"}}>
+                  {normalizingText?"変換中…":"一括変換"}
+                </button>
               </div>
             </div>
             <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:10,padding:16}}>

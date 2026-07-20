@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { notion } from "@/lib/notion";
+import { normalizeLyricsText } from "@/lib/normalizeText";
 
 function toPageId(id: string): string {
   const match = id.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i)
@@ -15,10 +16,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const properties: Record<string, any> = {};
     if (body.選手名 !== undefined) properties["選手名"] = { title: [{ text: { content: body.選手名 } }] };
     if (body.チーム名 !== undefined) properties["チーム名"] = body.チーム名 ? { select: { name: body.チーム名 } } : { select: null };
-    if (body.前奏 !== undefined) properties["前奏"] = { rich_text: [{ text: { content: body.前奏 } }] };
-    if (body.歌詞 !== undefined) properties["歌詞"] = { rich_text: [{ text: { content: body.歌詞 } }] };
-    if (body.歌詞2 !== undefined) properties["歌詞2"] = { rich_text: [{ text: { content: body.歌詞2 } }] };
-    if (body.歌詞3 !== undefined) properties["歌詞3"] = { rich_text: [{ text: { content: body.歌詞3 } }] };
+    if (body.前奏 !== undefined) properties["前奏"] = { rich_text: [{ text: { content: normalizeLyricsText(body.前奏) } }] };
+    if (body.歌詞 !== undefined) properties["歌詞"] = { rich_text: [{ text: { content: normalizeLyricsText(body.歌詞) } }] };
+    if (body.歌詞2 !== undefined) properties["歌詞2"] = { rich_text: [{ text: { content: normalizeLyricsText(body.歌詞2) } }] };
+    if (body.歌詞3 !== undefined) properties["歌詞3"] = { rich_text: [{ text: { content: normalizeLyricsText(body.歌詞3) } }] };
     if (body.コール !== undefined) properties["コール"] = { rich_text: [{ text: { content: body.コール } }] };
     if (body.備考 !== undefined) properties["備考"] = { rich_text: [{ text: { content: body.備考 } }] };
     if (body.汎用 !== undefined) properties["汎用"] = { checkbox: body.汎用 };
@@ -28,7 +29,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (body.汎用の対象 !== undefined) properties["汎用の対象"] = { multi_select: (body.汎用の対象 as string[]).map(n => ({ name: n })) };
     if (body.流用 !== undefined) properties["流用"] = { relation: (body.流用 as string[]).map(id => ({ id })) };
     if (body.交互演奏 !== undefined) properties["交互演奏"] = { checkbox: body.交互演奏 };
-    if (body.交互演奏歌詞 !== undefined) properties["交互演奏歌詞"] = { rich_text: [{ text: { content: body.交互演奏歌詞 } }] };
+    if (body.交互演奏歌詞 !== undefined) properties["交互演奏歌詞"] = { rich_text: [{ text: { content: normalizeLyricsText(body.交互演奏歌詞) } }] };
     if (body.テンプレートID !== undefined) properties["テンプレートID"] = { rich_text: [{ text: { content: body.テンプレートID } }] };
     if (body.テンプレートキーワード !== undefined) properties["テンプレートキーワード"] = { rich_text: [{ text: { content: body.テンプレートキーワード } }] };
     await notion.pages.update({ page_id: pageId, properties });

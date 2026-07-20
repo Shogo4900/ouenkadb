@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { notion, DATABASE_ID } from "@/lib/notion";
+import { normalizeLyricsText } from "@/lib/normalizeText";
 
 const DATA_SOURCE_ID = "d988b900-6adc-830d-ac5f-879a083a50bb";
 
@@ -65,10 +66,10 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const properties: Record<string, any> = {
       選手名: { title: [{ text: { content: body.選手名 ?? "" } }] },
-      前奏: { rich_text: [{ text: { content: body.前奏 ?? "" } }] },
-      歌詞: { rich_text: [{ text: { content: body.歌詞 ?? "" } }] },
-      歌詞2: { rich_text: [{ text: { content: body.歌詞2 ?? "" } }] },
-      歌詞3: { rich_text: [{ text: { content: body.歌詞3 ?? "" } }] },
+      前奏: { rich_text: [{ text: { content: normalizeLyricsText(body.前奏 ?? "") } }] },
+      歌詞: { rich_text: [{ text: { content: normalizeLyricsText(body.歌詞 ?? "") } }] },
+      歌詞2: { rich_text: [{ text: { content: normalizeLyricsText(body.歌詞2 ?? "") } }] },
+      歌詞3: { rich_text: [{ text: { content: normalizeLyricsText(body.歌詞3 ?? "") } }] },
       コール: { rich_text: [{ text: { content: body.コール ?? "" } }] },
       備考: { rich_text: [{ text: { content: body.備考 ?? "" } }] },
       汎用: { checkbox: body.汎用 ?? false },
@@ -78,7 +79,7 @@ export async function POST(req: NextRequest) {
       汎用の対象: { multi_select: (body.汎用の対象 ?? []).map((n: string) => ({ name: n })) },
       流用: { relation: (body.流用 ?? []).map((id: string) => ({ id })) },
       交互演奏: { checkbox: body.交互演奏 ?? false },
-      交互演奏歌詞: { rich_text: [{ text: { content: body.交互演奏歌詞 ?? "" } }] },
+      交互演奏歌詞: { rich_text: [{ text: { content: normalizeLyricsText(body.交互演奏歌詞 ?? "") } }] },
       テンプレートID: { rich_text: [{ text: { content: body.テンプレートID ?? "" } }] },
       テンプレートキーワード: { rich_text: [{ text: { content: body.テンプレートキーワード ?? "" } }] },
     };
