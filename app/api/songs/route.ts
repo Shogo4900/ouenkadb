@@ -30,6 +30,8 @@ function pageToSong(page: any) {
     テンプレートID: getText(p["テンプレートID"]),
     テンプレートキーワード: getText(p["テンプレートキーワード"]),
     テンプレートなし: p["テンプレートなし"]?.checkbox ?? false,
+    交互演奏: p["交互演奏"]?.checkbox ?? false,
+    交互演奏歌詞: getText(p["交互演奏歌詞"]),
     notionId: p["ID"]?.unique_id?.number ?? null,
   };
 }
@@ -75,6 +77,8 @@ export async function POST(req: NextRequest) {
       テンプレートなし: { checkbox: body.テンプレートなし ?? false },
       汎用の対象: { multi_select: (body.汎用の対象 ?? []).map((n: string) => ({ name: n })) },
       流用: { relation: (body.流用 ?? []).map((id: string) => ({ id })) },
+      交互演奏: { checkbox: body.交互演奏 ?? false },
+      交互演奏歌詞: { rich_text: [{ text: { content: body.交互演奏歌詞 ?? "" } }] },
       テンプレートID: { rich_text: [{ text: { content: body.テンプレートID ?? "" } }] },
       テンプレートキーワード: { rich_text: [{ text: { content: body.テンプレートキーワード ?? "" } }] },
     };
