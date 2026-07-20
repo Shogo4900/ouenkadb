@@ -20,6 +20,7 @@ type Song = {
   備考: string; 汎用: boolean; 汎用の対象: string[]; 良曲: boolean;
   重複除外: boolean; 流用: string[];
   テンプレートID: string; テンプレートキーワード: string; テンプレートなし: boolean;
+  交互演奏: boolean; 交互演奏歌詞: string;
   notionId: number | null;
 };
 
@@ -32,6 +33,7 @@ const emptyForm = (): Partial<Song> => ({
   選手名:"", チーム名:"", 前奏:"", 歌詞:"", 歌詞2:"", 歌詞3:"",
   コール:"", 備考:"", 汎用:false, 汎用の対象:[], 良曲:false, 流用:[],
   テンプレートID:"", テンプレートキーワード:"", テンプレートなし:false,
+  交互演奏:false, 交互演奏歌詞:"",
 });
 
 function loadDraft(): Partial<Song> {
@@ -503,13 +505,16 @@ export default function Home() {
                       )}
                       {isExp&&(
                         <div style={{borderTop:"1px solid var(--border)",padding:"9px 11px",display:"flex",flexDirection:"column",gap:7}}>
-                          {(["前奏","歌詞","歌詞2","歌詞3","コール","備考"] as const).map(key=>
+                          {(["前奏","歌詞","歌詞2","歌詞3","コール","備考","交互演奏歌詞"] as const).map(key=>
                             song[key]?(
                               <div key={key}>
                                 <div style={{fontSize:11,color:"var(--text-muted)",marginBottom:2}}>{key}</div>
                                 <div style={{fontSize:13,whiteSpace:"pre-wrap",lineHeight:1.7,background:"var(--bg3)",padding:"6px 9px",borderRadius:6,color:"#c8cce8"}}>{song[key]}</div>
                               </div>
                             ):null
+                          )}
+                          {song.交互演奏&&(
+                            <div style={{fontSize:11,background:"#0d1a2e",border:"1px solid var(--border)",color:"var(--accent-light)",padding:"3px 8px",borderRadius:5,display:"inline-block"}}>🎵 交互演奏あり</div>
                           )}
                           {song.汎用の対象.length>0&&(
                             <div>
@@ -629,6 +634,19 @@ export default function Home() {
               <Field label="備考">
                 <textarea value={form.備考??""} onChange={e=>setForm({...form,備考:e.target.value})} rows={2} style={{...css.input,resize:"vertical"}} />
               </Field>
+              {/* 交互演奏 */}
+              <div style={{display:"flex",flexDirection:"column",gap:8,padding:"10px 12px",background:"var(--bg3)",borderRadius:8}}>
+                <label style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer",fontSize:14}}>
+                  <input type="checkbox" checked={!!form.交互演奏} onChange={e=>setForm({...form,交互演奏:e.target.checked})} />
+                  <span style={{color:form.交互演奏?"var(--accent-light)":"var(--text-muted)"}}>🎵 交互演奏</span>
+                </label>
+                {form.交互演奏&&(
+                  <Field label="交互演奏歌詞">
+                    <textarea value={form.交互演奏歌詞??""} onChange={e=>setForm({...form,交互演奏歌詞:e.target.value})}
+                      rows={3} placeholder="交互演奏時の歌詞を入力" style={{...css.input,resize:"vertical"}} />
+                  </Field>
+                )}
+              </div>
               <Field label="流用元">
                 <div style={{display:"flex",flexDirection:"column",gap:6}}>
                   {(form.流用??[]).length>0&&(
