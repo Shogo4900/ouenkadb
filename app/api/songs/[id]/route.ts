@@ -27,6 +27,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (body.テンプレートなし !== undefined) properties["テンプレートなし"] = { checkbox: body.テンプレートなし };
     if (body.汎用の対象 !== undefined) properties["汎用の対象"] = { multi_select: (body.汎用の対象 as string[]).map(n => ({ name: n })) };
     if (body.流用 !== undefined) properties["流用"] = { relation: (body.流用 as string[]).map(id => ({ id })) };
+    if (body.交互演奏 !== undefined) properties["交互演奏"] = { checkbox: body.交互演奏 };
+    if (body.交互演奏歌詞 !== undefined) properties["交互演奏歌詞"] = { rich_text: [{ text: { content: body.交互演奏歌詞 } }] };
     if (body.テンプレートID !== undefined) properties["テンプレートID"] = { rich_text: [{ text: { content: body.テンプレートID } }] };
     if (body.テンプレートキーワード !== undefined) properties["テンプレートキーワード"] = { rich_text: [{ text: { content: body.テンプレートキーワード } }] };
     await notion.pages.update({ page_id: pageId, properties });
