@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 const HANYOU_TARGETS = ["捕手","日本人野手","外国人野手","投手","若手","左打者","右打者","外国人投手","野手"];
 
@@ -194,6 +194,26 @@ export default function Home() {
   },[]);
 
   useEffect(()=>{fetchTeams();fetchSongs();fetchTemplates();},[fetchTeams,fetchSongs,fetchTemplates]);
+
+  // 一覧タブに切り替えたときに再取得（Notion側で直接追加された曲を反映）
+  const isFirstTabRender = useRef(true);
+  useEffect(() => {
+    if (isFirstTabRender.current) { isFirstTabRender.current = false; return; }
+    if (tab === "list") fetchSongs();
+  }, [tab, fetchSongs]);
+
+  // アプリに戻ってきたとき（他アプリ/タブでNotionに追加後の復帰）に再取得
+  useEffect(() => {
+    const handleVisible = () => {
+      if (document.visibilityState === "visible") fetchSongs();
+    };
+    window.addEventListener("focus", handleVisible);
+    document.addEventListener("visibilitychange", handleVisible);
+    return () => {
+      window.removeEventListener("focus", handleVisible);
+      document.removeEventListener("visibilitychange", handleVisible);
+    };
+  }, [fetchSongs]);
 
   const songMap = Object.fromEntries(allSongs.map(s=>[s.id,s]));
 
