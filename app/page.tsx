@@ -434,7 +434,7 @@ export default function Home() {
 
   return (
     <div style={{minHeight:"100vh"}}>
-      <div style={{background:"linear-gradient(135deg,#0d1b2a,#1a0a2e)",borderBottom:"1px solid var(--border)",padding:"11px 14px",display:"flex",alignItems:"center",gap:10}}>
+      <div style={{position:"sticky",top:0,zIndex:100,background:"linear-gradient(135deg,#0d1b2a,#1a0a2e)",borderBottom:"1px solid var(--border)",padding:"11px 14px",display:"flex",alignItems:"center",gap:10}}>
         <span style={{fontSize:22}}>⚾</span>
         <div style={{flex:1}}>
           <div style={{fontSize:16,fontWeight:700,color:"var(--accent-light)",letterSpacing:"0.04em"}}>応援歌DB</div>
